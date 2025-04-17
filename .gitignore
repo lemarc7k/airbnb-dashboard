@@ -7,16 +7,13 @@ venv/
 __pycache__/
 *.py[cod]
 
-# Ignorar configuraciones de VS Code
+# Ignorar configuraciones de VS Code
 .vscode/
 
 # Ignorar archivos del sistema
 .DS_Store
 
-# Ignorar datos de ejemplo/CSV
-data/*.csv
-
-# —— Reglas genéricas para Python —— 
+# —— Reglas generales para Python ——
 # Byte-compiled / optimized / DLL files
 *$py.class
 
@@ -70,20 +67,20 @@ cover/
 *.mo
 *.pot
 
-# Django stuff:
+# Django
 *.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
 
-# Flask stuff:
+# Flask
 instance/
 .webassets-cache
 
-# Scrapy stuff:
+# Scrapy
 .scrapy
 
-# Sphinx documentation
+# Sphinx
 docs/_build/
 
 # PyBuilder
@@ -97,10 +94,10 @@ target/
 profile_default/
 ipython_config.py
 
-# Environments
+# Entornos virtuales y variables
 .env
-env/
 ENV/
+env/
 env.bak/
 venv.bak/
 
@@ -108,18 +105,19 @@ venv.bak/
 .python-version
 
 # pipenv
-Pipfile.lock
+# Pipfile.lock (opcional, comentar si deseas mantenerlo)
+#Pipfile.lock
 
 # poetry
-poetry.lock
+#poetry.lock
 
 # pdm
-pdm.lock
+#pdm.lock
 .pdm.toml
 .pdm-python
 .pdm-build/
 
-# PEP 582; used by some tools
+# PEP 582
 __pypackages__/
 
 # Celery
@@ -132,8 +130,8 @@ cython_debug/
 # JetBrains IDEs
 .idea/
 
-# Ruff cache
+# Ruff
 .ruff_cache/
 
-# PyPI configuration
+# PyPI
 .pypirc
