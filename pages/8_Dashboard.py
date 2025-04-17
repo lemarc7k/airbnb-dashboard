@@ -23,6 +23,8 @@ def cargar_reservas():
         df["Precio"] = pd.to_numeric(df["Precio"], errors="coerce").fillna(0)
         df["Huespedes"] = pd.to_numeric(df["Huespedes"], errors="coerce").fillna(0).astype(int)
         df["Noches"] = pd.to_numeric(df["Noches"], errors="coerce").fillna(0).astype(int)
+
+        # 🔽 Agrupaciones por tiempo
         df["Mes"] = df["Check-in"].dt.to_period("M").astype(str)
         df["Semana"] = df["Check-in"].dt.to_period("W-MON").astype(str)
         df["Día"] = df["Check-in"].dt.date
@@ -51,9 +53,9 @@ col3.metric("Huéspedes del mes", huespedes_mes, f"{huespedes_mes - huespedes_an
 # ---------- GRÁFICOS ---------- #
 st.markdown("---")
 st.markdown("### 📅 Análisis temporal de ingresos y ocupación")
-rango = st.selectbox("Rango de agrupación", ["Día", "Semana", "Mes", "Año"], index=2)
-col_g1, col_g2 = st.columns(2)
 
+rango = st.selectbox("📆 Agrupar por", ["Día", "Semana", "Mes", "Año"], index=2)
+col_g1, col_g2 = st.columns(2)
 columna = {"Día": "Día", "Semana": "Semana", "Mes": "Mes", "Año": "Año"}[rango]
 
 ingresos = df.groupby(columna)["Precio"].sum().reset_index()
@@ -63,9 +65,11 @@ huespedes = df.groupby(columna)["Huespedes"].sum().reset_index()
 chart1 = alt.Chart(ingresos).mark_bar(color="#4caf50").encode(
     x=columna, y=alt.Y("Precio", title="Ingresos ($)"), tooltip=[columna, "Precio"]
 ).properties(title=f"Ingresos por {rango.lower()}", height=300)
+
 chart2 = alt.Chart(ocupacion).mark_line(point=True, color="#2196f3").encode(
     x=columna, y=alt.Y("Noches", title="Noches ocupadas"), tooltip=[columna, "Noches"]
 ).properties(title=f"Ocupación por {rango.lower()}", height=300)
+
 chart3 = alt.Chart(huespedes).mark_area(opacity=0.5, color="#ff9800").encode(
     x=columna, y=alt.Y("Huespedes", title="Total huéspedes"), tooltip=[columna, "Huespedes"]
 ).properties(title=f"Huéspedes por {rango.lower()}", height=300)
@@ -76,9 +80,9 @@ st.altair_chart(chart3, use_container_width=True)
 
 # ---------- TABLAS AGRUPADAS ---------- #
 st.markdown("---")
-st.markdown("### 📊 Tablas de análisis por categoría")
-col_a, col_b = st.columns(2)
+st.markdown("### 📊 Análisis por categoría")
 
+col_a, col_b = st.columns(2)
 with col_a:
     st.markdown("#### 🏠 Ingresos por propiedad")
     st.dataframe(df.groupby("Propiedad")["Precio"].sum().reset_index().sort_values("Precio", ascending=False), use_container_width=True)
