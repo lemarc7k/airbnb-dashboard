@@ -1,13 +1,11 @@
 import streamlit as st
+import pandas as pd
 import datetime
-from firebase_admin import firestore
 from firebase_config import db
 
-st.set_page_config(page_title="Inventario", layout="wide")
 st.title("📦 Inventario de Suministros")
 
-COLLECTION = "inventory"
-
+# -------- PRODUCTOS PREDEFINIDOS --------
 PRODUCTOS_PREDEFINIDOS = [
     {"nombre": "Bolsas de basura", "unidad": "unidades"},
     {"nombre": "Esponja", "unidad": "unidades"},
@@ -31,22 +29,23 @@ PRODUCTOS_PREDEFINIDOS = [
     {"nombre": "Alfombra de baño", "unidad": "unidades"}
 ]
 
-# --------- Cargar datos de Firebase ---------
-def cargar_inventario():
-    docs = db.collection(COLLECTION).stream()
-    return [
-        {**doc.to_dict(), "id": doc.id}
-        for doc in docs
-    ]
+# -------- FUNCIONES FIRESTORE --------
+def obtener_inventario():
+    docs = db.collection("inventory").stream()
+    data = [doc.to_dict() | {"id": doc.id} for doc in docs]
+    return pd.DataFrame(data) if data else pd.DataFrame(columns=["Producto", "Cantidad", "Unidad", "Última actualización"])
 
-def guardar_producto(nombre, cantidad, unidad):
-    doc_ref = db.collection(COLLECTION).document(nombre)
-    doc_ref.set({
-        "Producto": nombre,
+def guardar_producto(producto, cantidad, unidad):
+    ref = db.collection("inventory").document(producto)
+    ref.set({
+        "Producto": producto,
         "Cantidad": cantidad,
         "Unidad": unidad,
         "Última actualización": datetime.date.today().isoformat()
     })
+
+# -------- CARGAR INVENTARIO --------
+df = obtener_inventario()
 
 # -------- FORMULARIO RÁPIDO PARA PRODUCTOS PREDEFINIDOS --------
 st.subheader("➕ Añadir o Actualizar Producto (Predefinido)")
@@ -63,17 +62,12 @@ if st.button("Guardar"):
     st.success("✅ Producto guardado correctamente")
     st.rerun()
 
-# -------- MOSTRAR DATOS --------
-datos = cargar_inventario()
-df = st.data_editor(
-    pd.DataFrame(datos),
-    column_order=["Producto", "Cantidad", "Unidad", "Última actualización"],
-    use_container_width=True,
-    disabled=["id"]
-)
-
 # -------- ALERTA DE STOCK BAJO --------
 st.subheader("🚨 Productos con bajo stock")
 stock_minimo = st.slider("Mostrar alertas si la cantidad es menor a:", 1, 20, 5)
-df_bajo_stock = df[df["Cantidad"] < stock_minimo]
-st.dataframe(df_bajo_stock)
+df_alerta = df[df["Cantidad"] < stock_minimo]
+st.dataframe(df_alerta)
+
+# -------- VER TODO EL INVENTARIO --------
+st.subheader("📋 Inventario Completo")
+st.dataframe(df)

@@ -1,67 +1,58 @@
 import streamlit as st
 import pandas as pd
 import datetime
-from streamlit_calendar import calendar
 from firebase_config import db
 
-st.set_page_config(page_title="Calendario de Reservas", layout="wide")
-st.title("📅 Calendario de reservas")
+st.set_page_config(page_title="Calendario", layout="wide")
+st.title("📅 Calendario de Reservas")
 
-# Leer reservas desde Firebase
-docs = db.collection("bookings").stream()
-df = pd.DataFrame([doc.to_dict() for doc in docs])
+# ---------- CARGAR RESERVAS ----------
+@st.cache_data
+def cargar_reservas():
+    reservas_ref = db.collection("bookings")
+    docs = reservas_ref.stream()
 
-# Columnas esperadas
-BOOKINGS_COLUMNS = ["Fecha", "Propiedad", "Huesped", "Check-in", "Check-out", "Canal", "Noches", "Huespedes", "Precio", "Pago", "Notas"]
+    data = []
+    for doc in docs:
+        d = doc.to_dict()
+        if "Check-in" in d and "Check-out" in d:
+            d["Check-in"] = pd.to_datetime(d["Check-in"], errors="coerce")
+            d["Check-out"] = pd.to_datetime(d["Check-out"], errors="coerce")
+            data.append(d)
 
-# Asegurar que todas las columnas existen
-df = df.reindex(columns=BOOKINGS_COLUMNS, fill_value="")
+    df = pd.DataFrame(data)
+    return df
 
-# Conversión de fechas
-if not df.empty:
-    df["Check-in"] = pd.to_datetime(df["Check-in"], errors="coerce")
-    df["Check-out"] = pd.to_datetime(df["Check-out"], errors="coerce")
+df = cargar_reservas()
+hoy = datetime.date.today()
 
-# Filtros
-with st.sidebar:
-    st.subheader("🔍 Filtros del calendario")
-    propiedades = ["Todas"] + sorted(df["Propiedad"].dropna().unique())
-    propiedad_filtrada = st.selectbox("Propiedad", propiedades)
+# ---------- CATEGORIZAR ESTADO ----------
+def clasificar_estado(row):
+    if pd.isnull(row["Check-in"]) or pd.isnull(row["Check-out"]):
+        return ""
+    hoy_dt = pd.to_datetime(hoy)
+    if row["Check-in"].date() <= hoy <= row["Check-out"].date():
+        return "Currently hosting"
+    elif row["Check-in"].date() > hoy:
+        return "Upcoming"
+    elif row["Check-out"].date() == hoy:
+        return "Checking out"
+    elif row["Check-in"].date() == hoy:
+        return "Arriving soon"
+    elif row["Check-out"].date() < hoy:
+        return "Pending review"
+    return ""
 
-df_filtrado = df.copy()
-if propiedad_filtrada != "Todas":
-    df_filtrado = df_filtrado[df_filtrado["Propiedad"] == propiedad_filtrada]
+# ✅ Validar antes de aplicar la función
+if not df.empty and "Check-in" in df.columns and "Check-out" in df.columns:
+    df["Estado"] = df.apply(clasificar_estado, axis=1)
+else:
+    df["Estado"] = []
 
-# Construcción de eventos
-eventos = []
-for i, row in df_filtrado.iterrows():
-    if pd.notnull(row["Check-in"]) and pd.notnull(row["Check-out"]):
-        eventos.append({
-            "id": str(i),
-            "title": f"{row['Huesped']} - {row['Propiedad']}",
-            "start": row["Check-in"].strftime("%Y-%m-%d"),
-            "end": (row["Check-out"] + pd.Timedelta(days=1)).strftime("%Y-%m-%d"),
-            "color": "#3b82f6"
-        })
-
-# Calendario visual
-calendar(
-    events=eventos,
-    options={
-        "locale": "es",
-        "initialView": "dayGridMonth",
-        "height": 650,
-        "headerToolbar": {
-            "left": "prev,next today",
-            "center": "title",
-            "right": "dayGridMonth,timeGridWeek"
-        },
-        "nowIndicator": True
-    },
-    key="visual_calendar"
-)
-
-# Navegación inversa
-df_total = len(df)
-st.markdown(f"\n---\n👁️ Visualizando {len(df_filtrado)} de {df_total} reservas")
-st.markdown("[📋 Ir al registro de reservas](?page=Booking_Manager_Tab)")
+# ---------- MOSTRAR RESERVAS ----------
+st.subheader("Reservas para hoy")
+df_hoy = df[df["Estado"] == "Currently hosting"]
+if df_hoy.empty:
+    st.info("No hay reservas activas para hoy.")
+else:
+    st.dataframe(df_hoy[["Huesped", "Propiedad", "Check-in", "Check-out"]], use_container_width=True)

@@ -1,13 +1,12 @@
 import streamlit as st
 import pandas as pd
 import datetime
-from firebase_config import db  # Importa la configuración de Firebase
+from firebase_config import db
 
-st.set_page_config(page_title="Gestión de Limpiezas", layout="wide")
+st.set_page_config(page_title="🧹 Gestión de Limpiezas", layout="wide")
 st.title("🧹 Gestión de Limpiezas")
 
-COLUMNS = ["Fecha", "Propiedad", "Habitación", "Cleaner", "Estado", "Origen"]
-
+# ----- PRODUCTOS POR LIMPIEZA -----
 PRODUCTOS_POR_LIMPIEZA = {
     "Bolsas de basura": {"cantidad": 2, "unidad": "unidades"},
     "Esponja": {"cantidad": 1, "unidad": "unidades"},
@@ -16,36 +15,57 @@ PRODUCTOS_POR_LIMPIEZA = {
     "Ambientador": {"cantidad": 0.05, "unidad": "litros"}
 }
 
+# ----- FUNCIONES FIRESTORE -----
 def cargar_limpiezas():
     docs = db.collection("cleaning").stream()
-    registros = []
+    data = []
     for doc in docs:
-        data = doc.to_dict()
-        data["doc_id"] = doc.id
-        registros.append(data)
-    return pd.DataFrame(registros, columns=COLUMNS + ["doc_id"])
+        d = doc.to_dict()
+        d["id"] = doc.id
+        data.append(d)
+    df = pd.DataFrame(data)
+    if not df.empty:
+        df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce").dt.date
+    return df
+
+def guardar_limpieza(nueva):
+    db.collection("cleaning").add(nueva)
+
+def actualizar_estado_limpieza(doc_id, nuevo_estado):
+    db.collection("cleaning").document(doc_id).update({"Estado": nuevo_estado})
+    if nuevo_estado == "Completado":
+        descontar_inventario()
 
 def descontar_inventario():
-    inv_docs = db.collection("inventory").stream()
-    for inv in inv_docs:
-        data = inv.to_dict()
-        nombre = data.get("Producto")
-        if nombre in PRODUCTOS_POR_LIMPIEZA:
+    inventario_ref = db.collection("inventory")
+    docs = inventario_ref.stream()
+    for doc in docs:
+        data = doc.to_dict()
+        producto = data["Producto"]
+        if producto in PRODUCTOS_POR_LIMPIEZA:
             cantidad_actual = float(data.get("Cantidad", 0))
-            cantidad_descuento = PRODUCTOS_POR_LIMPIEZA[nombre]["cantidad"]
-            nueva_cantidad = max(0, cantidad_actual - cantidad_descuento)
-            db.collection("inventory").document(inv.id).update({
+            cantidad_usada = PRODUCTOS_POR_LIMPIEZA[producto]["cantidad"]
+            nueva_cantidad = max(0, cantidad_actual - cantidad_usada)
+            inventario_ref.document(doc.id).update({
                 "Cantidad": nueva_cantidad,
-                "Última actualización": str(datetime.date.today())
+                "Última actualización": datetime.date.today().isoformat()
             })
 
+# ----- CARGAR DATOS -----
 df = cargar_limpiezas()
 
-# ---- FILTROS ----
+# ----- FILTROS -----
 st.subheader("🔍 Filtros")
 col1, col2 = st.columns(2)
-with col1:
-    filtro_propiedad = st.selectbox("Propiedad", ["Todas"] + sorted(df["Propiedad"].dropna().unique()), index=0)
+
+if not df.empty and "Propiedad" in df.columns:
+    with col1:
+        filtro_propiedad = st.selectbox("Propiedad", ["Todas"] + sorted(df["Propiedad"].dropna().unique()), index=0)
+else:
+    filtro_propiedad = "Todas"
+    with col1:
+        st.warning("No hay datos o falta el campo 'Propiedad'")
+
 with col2:
     filtro_estado = st.selectbox("Estado", ["Todos", "Pendiente", "En progreso", "Completado"], index=0)
 
@@ -54,16 +74,17 @@ if st.checkbox("Filtrar por fecha específica"):
     filtro_fecha = st.date_input("Seleccionar fecha")
 
 df_filtrado = df.copy()
-if filtro_propiedad != "Todas":
+if filtro_propiedad != "Todas" and "Propiedad" in df_filtrado.columns:
     df_filtrado = df_filtrado[df_filtrado["Propiedad"] == filtro_propiedad]
-if filtro_estado != "Todos":
+if filtro_estado != "Todos" and "Estado" in df_filtrado.columns:
     df_filtrado = df_filtrado[df_filtrado["Estado"] == filtro_estado]
-if filtro_fecha:
-    df_filtrado = df_filtrado[df_filtrado["Fecha"] == str(filtro_fecha)]
+if filtro_fecha and "Fecha" in df_filtrado.columns:
+    df_filtrado = df_filtrado[df_filtrado["Fecha"] == filtro_fecha]
 
 st.dataframe(df_filtrado)
 
-# ---- FORMULARIO NUEVA LIMPIEZA ----
+
+# ----- FORMULARIO -----
 st.subheader("➕ Programar Nueva Limpieza")
 with st.form("form_limpieza", clear_on_submit=True):
     fecha = st.date_input("Fecha")
@@ -76,18 +97,18 @@ with st.form("form_limpieza", clear_on_submit=True):
 
     if submitted:
         nueva = {
-            "Fecha": str(fecha),
+            "Fecha": fecha.isoformat(),
             "Propiedad": propiedad,
             "Habitación": habitacion,
             "Cleaner": cleaner,
             "Estado": estado,
             "Origen": origen
         }
-        db.collection("cleaning").add(nueva)
+        guardar_limpieza(nueva)
         st.success("✅ Limpieza registrada correctamente")
         st.rerun()
 
-# ---- ACTUALIZAR ESTADO ----
+# ----- ACTUALIZAR ESTADO -----
 st.subheader("🔁 Actualizar Estado")
 if not df.empty:
     for _, row in df.iterrows():
@@ -101,46 +122,49 @@ if not df.empty:
                 "Cambiar estado",
                 ["Pendiente", "En progreso", "Completado"],
                 index=["Pendiente", "En progreso", "Completado"].index(row["Estado"]),
-                key=row["doc_id"]
+                key=row["id"] + "_estado"
             )
         with col4:
-            if st.button("Actualizar", key=f"update_{row['doc_id']}"):
-                db.collection("cleaning").document(row["doc_id"]).update({"Estado": nuevo_estado})
-                if nuevo_estado == "Completado":
-                    descontar_inventario()
+            if st.button("Actualizar", key=f"update_{row['id']}"):
+                actualizar_estado_limpieza(row["id"], nuevo_estado)
                 st.success("✅ Estado actualizado")
                 st.rerun()
 
-# ---- MÉTRICAS ----
+# ----- MÉTRICAS -----
 st.subheader("📊 Métricas de Limpieza")
 col1, col2, col3 = st.columns(3)
 with col1:
     st.metric("Total tareas", len(df))
-with col2:
-    st.metric("Pendientes", len(df[df["Estado"] == "Pendiente"]))
-with col3:
-    st.metric("Completadas", len(df[df["Estado"] == "Completado"]))
 
-# ---- ALERTAS VISUALES ----
+if "Estado" in df.columns:
+    with col2:
+        st.metric("Pendientes", len(df[df["Estado"] == "Pendiente"]))
+    with col3:
+        st.metric("Completadas", len(df[df["Estado"] == "Completado"]))
+else:
+    st.warning("Algunas tareas no tienen estado asignado. Revisa los datos.")
+
+
+# ----- ALERTAS VISUALES -----
 st.subheader("🚨 Alertas visuales (tareas atrasadas)")
-
 today = datetime.date.today()
-df_alertas = df.copy()
-df_alertas["Fecha"] = pd.to_datetime(df_alertas["Fecha"], errors="coerce").dt.date
 
 def evaluar_estado(row):
-    if pd.isna(row["Fecha"]):
+    if pd.isna(row.get("Fecha")):
         return "⚠️ Sin fecha"
     delta = (today - row["Fecha"]).days
-    if row["Estado"] == "Pendiente" and delta > 2:
+    if row.get("Estado") == "Pendiente" and delta > 2:
         return "🔴 ATRASADA"
-    elif row["Estado"] == "En progreso" and delta > 1:
+    elif row.get("Estado") == "En progreso" and delta > 1:
         return "🟠 EN PROGRESO RETRASADA"
-    elif row["Estado"] == "Completado":
+    elif row.get("Estado") == "Completado":
         return "✅ Ok"
     else:
         return "🕓 A tiempo"
 
-df_alertas["Alerta"] = df_alertas.apply(evaluar_estado, axis=1)
-
-st.dataframe(df_alertas[["Fecha", "Propiedad", "Habitación", "Cleaner", "Estado", "Alerta"]])
+# Aplica alertas solo si df no está vacío y tiene columnas necesarias
+if not df.empty and "Fecha" in df.columns and "Estado" in df.columns:
+    df["Alerta"] = df.apply(evaluar_estado, axis=1)
+    st.dataframe(df[["Fecha", "Propiedad", "Habitación", "Cleaner", "Estado", "Alerta"]])
+else:
+    st.warning("No hay datos suficientes para mostrar alertas.")

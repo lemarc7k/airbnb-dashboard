@@ -1,32 +1,21 @@
 import streamlit as st
-import datetime
 import pandas as pd
-from firebase_admin import firestore
+import datetime
 from firebase_config import db
 
-st.set_page_config(page_title="Incidencias", layout="wide")
+st.set_page_config(page_title="Incidentes", layout="wide")
 st.title("⚠️ Gestión de Incidencias")
 
-COLLECTION = "incidents"
+# ---- FIRESTORE CONFIG ----
+coleccion = "incidents"
+CAMPOS = ["fecha", "propiedad", "descripcion", "estado"]
 
-# ---------- FUNCIONES ---------- #
-def cargar_incidencias():
-    docs = db.collection(COLLECTION).stream()
-    return [{**doc.to_dict(), "id": doc.id} for doc in docs]
+# ----- CARGAR DATOS DE INCIDENCIAS ----- #
+docs = db.collection(coleccion).stream()
+data = [{**doc.to_dict(), "id": doc.id} for doc in docs]
+df = pd.DataFrame(data)
 
-def registrar_incidencia(fecha, propiedad, descripcion, estado):
-    doc_ref = db.collection(COLLECTION).document()
-    doc_ref.set({
-        "Fecha": fecha.isoformat(),
-        "Propiedad": propiedad,
-        "Descripción": descripcion,
-        "Estado": estado
-    })
-
-def actualizar_estado(doc_id, nuevo_estado):
-    db.collection(COLLECTION).document(doc_id).update({"Estado": nuevo_estado})
-
-# ---------- FORMULARIO NUEVA INCIDENCIA ---------- #
+# -------- FORMULARIO PARA NUEVA INCIDENCIA --------
 st.subheader("📝 Reportar Nueva Incidencia")
 with st.form("form_incidencia", clear_on_submit=True):
     fecha = st.date_input("Fecha del incidente", value=datetime.date.today())
@@ -36,38 +25,52 @@ with st.form("form_incidencia", clear_on_submit=True):
     submitted = st.form_submit_button("Registrar")
 
     if submitted:
-        registrar_incidencia(fecha, propiedad, descripcion, estado)
-        st.success("✅ Incidencia registrada correctamente")
-        st.rerun()
-
-# ---------- MOSTRAR INCIDENCIAS ---------- #
-st.subheader("📋 Incidencias Registradas")
-datos = cargar_incidencias()
-df = pd.DataFrame(datos)
-
-filtro_estado = st.selectbox("Filtrar por estado", ["Todos", "Pendiente", "Resuelto"], index=0)
-if filtro_estado != "Todos":
-    df = df[df["Estado"] == filtro_estado]
-
-st.dataframe(df[["Fecha", "Propiedad", "Descripción", "Estado"]])
-
-# ---------- ACTUALIZACIÓN DE ESTADO ---------- #
-st.subheader("🔁 Cambiar Estado de Incidencias")
-for _, row in df.iterrows():
-    col1, col2, col3, col4 = st.columns([2, 3, 2, 1])
-    with col1:
-        st.write(row["Fecha"])
-    with col2:
-        st.write(row["Propiedad"])
-    with col3:
-        nuevo_estado = st.selectbox(
-            "Nuevo estado",
-            ["Pendiente", "Resuelto"],
-            index=["Pendiente", "Resuelto"].index(row["Estado"]),
-            key=row["id"]
-        )
-    with col4:
-        if st.button("Actualizar", key=f"upd_{row['id']}"):
-            actualizar_estado(row["id"], nuevo_estado)
-            st.success("✅ Estado actualizado correctamente")
+        if not propiedad.strip() or not descripcion.strip():
+            st.error("❌ Todos los campos son obligatorios.")
+        else:
+            nueva = {
+                "fecha": str(fecha),
+                "propiedad": propiedad.strip(),
+                "descripcion": descripcion.strip(),
+                "estado": estado
+            }
+            db.collection(coleccion).add(nueva)
+            st.success("✅ Incidencia registrada correctamente")
             st.rerun()
+
+# -------- MOSTRAR INCIDENCIAS EXISTENTES --------
+st.subheader("📋 Incidencias Registradas")
+filtro_estado = st.selectbox("Filtrar por estado", ["Todos", "Pendiente", "Resuelto"], index=0)
+
+# Aplicar filtro solo si la columna existe
+if "estado" in df.columns and filtro_estado != "Todos":
+    df = df[df["estado"] == filtro_estado]
+
+# Mostrar solo columnas que realmente existan
+columnas_disponibles = [col for col in CAMPOS if col in df.columns]
+if columnas_disponibles:
+    st.dataframe(df[columnas_disponibles], use_container_width=True)
+else:
+    st.warning("No hay columnas disponibles para mostrar.")
+
+# -------- ACTUALIZAR ESTADO DE INCIDENCIAS --------
+st.subheader("🔁 Cambiar Estado de Incidencias")
+if not df.empty and all(k in df.columns for k in ["estado", "id", "propiedad", "fecha"]):
+    for _, row in df.iterrows():
+        col1, col2, col3, col4 = st.columns([2, 3, 2, 1])
+        with col1:
+            st.write(row["fecha"])
+        with col2:
+            st.write(row["propiedad"])
+        with col3:
+            nuevo_estado = st.selectbox(
+                "Nuevo estado",
+                ["Pendiente", "Resuelto"],
+                index=["Pendiente", "Resuelto"].index(row["estado"]),
+                key=row["id"]
+            )
+        with col4:
+            if st.button("Actualizar", key=f"inc_{row['id']}"):
+                db.collection(coleccion).document(row["id"]).update({"estado": nuevo_estado})
+                st.success("✅ Estado actualizado correctamente")
+                st.rerun()

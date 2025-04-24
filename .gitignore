@@ -136,5 +136,8 @@ cython_debug/
 # PyPI
 .pypirc
 
+# ... todo lo que ya tienes arriba está perfecto ...
+
 # Clave de firebase
-firebase/firebase_key.json
+firebase_key.json
+

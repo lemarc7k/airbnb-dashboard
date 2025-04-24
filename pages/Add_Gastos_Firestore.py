@@ -1,48 +1,40 @@
 import streamlit as st
-import datetime
 import pandas as pd
-from firebase_config import db
+import datetime
+from firebase_config import db  # ✅ Firebase seguro con st.secrets
 
-st.set_page_config(page_title="Registrar Gastos", layout="wide")
-st.title("💸 Registro de Gastos en Firestore")
+st.set_page_config(page_title="Registro de Gastos", layout="wide")
+st.title("📒 Registro de Gastos en Firestore")
 
 # ---------- FORMULARIO ---------- #
-st.subheader("📝 Añadir Gasto")
+st.subheader("🧾 Añadir Gasto")
+descripcion = st.text_input("Descripción del gasto")
+monto = st.number_input("Monto en AUD", min_value=0.0, step=0.5)
+propiedad = st.text_input("Propiedad relacionada")
+fecha = st.date_input("Fecha del gasto", value=datetime.date.today())
 
-with st.form("form_gasto", clear_on_submit=True):
-    descripcion = st.text_input("Descripción del gasto")
-    monto = st.number_input("Monto en AUD", min_value=0.0, step=1.0)
-    propiedad = st.text_input("Propiedad relacionada")
-    fecha = st.date_input("Fecha del gasto", value=datetime.date.today())
-    submit = st.form_submit_button("Guardar")
+if st.button("Guardar"):
+    nuevo_gasto = {
+        "descripcion": descripcion,
+        "monto": monto,
+        "propiedad": propiedad,
+        "fecha": str(fecha)
+    }
+    db.collection("gastos").add(nuevo_gasto)
+    st.success("✅ Gasto registrado correctamente")
 
-    if submit:
-        nuevo_gasto = {
-            "descripcion": descripcion,
-            "monto": monto,
-            "propiedad": propiedad,
-            "fecha": fecha
-        }
-        db.collection("gastos").add(nuevo_gasto)
-        st.success("✅ Gasto registrado correctamente")
+# ---------- HISTORIAL DE GASTOS ---------- #
+st.subheader("📊 Historial de Gastos")
 
-# ---------- MOSTRAR GASTOS ---------- #
-st.markdown("---")
-st.subheader("📋 Historial de Gastos")
+gastos_ref = db.collection("gastos")
+docs = gastos_ref.stream()
+data = [doc.to_dict() for doc in docs]
+df = pd.DataFrame(data)
 
-docs = db.collection("gastos").stream()
-gastos = []
-
-for doc in docs:
-    data = doc.to_dict()
-    gastos.append(data)
-
-if gastos:
-    df_gastos = pd.DataFrame(gastos)
-    df_gastos["fecha"] = pd.to_datetime(df_gastos["fecha"], errors="coerce")
-    df_gastos["monto"] = pd.to_numeric(df_gastos["monto"], errors="coerce")
-
-    st.dataframe(df_gastos.sort_values("fecha", ascending=False), use_container_width=True)
-    st.metric("Total de Gastos", f"${df_gastos['monto'].sum():,.2f}")
+if not df.empty:
+    df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
+    df["monto"] = pd.to_numeric(df["monto"], errors="coerce").fillna(0)
+    st.dataframe(df.sort_values("fecha", ascending=False), use_container_width=True)
+    st.markdown(f"**Total de Gastos:** ${df['monto'].sum():,.2f}")
 else:
     st.info("No hay gastos registrados aún.")
