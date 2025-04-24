@@ -1,11 +1,12 @@
-
 import streamlit as st
-import pandas as pd
-import os
 import datetime
+from firebase_admin import firestore
+from firebase_config import db
 
-FILE_PATH = "data/inventory.csv"
-COLUMNS = ["Producto", "Cantidad", "Unidad", "Última actualización"]
+st.set_page_config(page_title="Inventario", layout="wide")
+st.title("📦 Inventario de Suministros")
+
+COLLECTION = "inventory"
 
 PRODUCTOS_PREDEFINIDOS = [
     {"nombre": "Bolsas de basura", "unidad": "unidades"},
@@ -30,14 +31,22 @@ PRODUCTOS_PREDEFINIDOS = [
     {"nombre": "Alfombra de baño", "unidad": "unidades"}
 ]
 
+# --------- Cargar datos de Firebase ---------
+def cargar_inventario():
+    docs = db.collection(COLLECTION).stream()
+    return [
+        {**doc.to_dict(), "id": doc.id}
+        for doc in docs
+    ]
 
-# Cargar o crear archivo
-if os.path.exists(FILE_PATH):
-    df = pd.read_csv(FILE_PATH)
-else:
-    df = pd.DataFrame(columns=COLUMNS)
-
-st.title("📦 Inventario de Suministros")
+def guardar_producto(nombre, cantidad, unidad):
+    doc_ref = db.collection(COLLECTION).document(nombre)
+    doc_ref.set({
+        "Producto": nombre,
+        "Cantidad": cantidad,
+        "Unidad": unidad,
+        "Última actualización": datetime.date.today().isoformat()
+    })
 
 # -------- FORMULARIO RÁPIDO PARA PRODUCTOS PREDEFINIDOS --------
 st.subheader("➕ Añadir o Actualizar Producto (Predefinido)")
@@ -50,25 +59,21 @@ with col2:
     unidad = st.text_input("Unidad", value=unidad_sugerida)
 
 if st.button("Guardar"):
-    fecha = datetime.date.today()
-    nueva_fila = pd.DataFrame([[producto_sel, cantidad, unidad, fecha]], columns=COLUMNS)
+    guardar_producto(producto_sel, cantidad, unidad)
+    st.success("✅ Producto guardado correctamente")
+    st.rerun()
 
-    if producto_sel in df["Producto"].values:
-        df.loc[df["Producto"] == producto_sel, ["Cantidad", "Unidad", "Última actualización"]] = [cantidad, unidad, fecha]
-        st.success("✅ Producto actualizado.")
-    else:
-        df = pd.concat([df, nueva_fila], ignore_index=True)
-        st.success("✅ Producto añadido.")
-
-    df.to_csv(FILE_PATH, index=False)
-    st.experimental_rerun()
+# -------- MOSTRAR DATOS --------
+datos = cargar_inventario()
+df = st.data_editor(
+    pd.DataFrame(datos),
+    column_order=["Producto", "Cantidad", "Unidad", "Última actualización"],
+    use_container_width=True,
+    disabled=["id"]
+)
 
 # -------- ALERTA DE STOCK BAJO --------
 st.subheader("🚨 Productos con bajo stock")
 stock_minimo = st.slider("Mostrar alertas si la cantidad es menor a:", 1, 20, 5)
-df_alerta = df[df["Cantidad"] < stock_minimo]
-st.dataframe(df_alerta)
-
-# -------- VER TODO EL INVENTARIO --------
-st.subheader("📋 Inventario Completo")
-st.dataframe(df)
+df_bajo_stock = df[df["Cantidad"] < stock_minimo]
+st.dataframe(df_bajo_stock)

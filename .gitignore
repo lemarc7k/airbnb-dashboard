@@ -135,3 +135,6 @@ cython_debug/
 
 # PyPI
 .pypirc
+
+# Clave de firebase
+firebase/firebase_key.json

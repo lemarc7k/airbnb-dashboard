@@ -1,23 +1,21 @@
 import streamlit as st
 import pandas as pd
-import os
 import datetime
 from streamlit_calendar import calendar
+from firebase_config import db
 
 st.set_page_config(page_title="Calendario de Reservas", layout="wide")
 st.title("📅 Calendario de reservas")
 
-BOOKINGS_PATH = "data/bookings.csv"
+# Leer reservas desde Firebase
+docs = db.collection("bookings").stream()
+df = pd.DataFrame([doc.to_dict() for doc in docs])
+
+# Columnas esperadas
 BOOKINGS_COLUMNS = ["Fecha", "Propiedad", "Huesped", "Check-in", "Check-out", "Canal", "Noches", "Huespedes", "Precio", "Pago", "Notas"]
 
-# Cargar reservas
-if os.path.exists(BOOKINGS_PATH):
-    df = pd.read_csv(BOOKINGS_PATH)
-    for col in BOOKINGS_COLUMNS:
-        if col not in df.columns:
-            df[col] = ""
-else:
-    df = pd.DataFrame(columns=BOOKINGS_COLUMNS)
+# Asegurar que todas las columnas existen
+df = df.reindex(columns=BOOKINGS_COLUMNS, fill_value="")
 
 # Conversión de fechas
 if not df.empty:

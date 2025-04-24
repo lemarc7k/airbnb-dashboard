@@ -1,13 +1,13 @@
 import streamlit as st
 import pandas as pd
-import os
 import datetime
+from firebase_config import db  # Importa la configuración de Firebase
 
-# ---- CONFIG ----
-FILE_PATH = "data/cleaning_schedule.csv"
+st.set_page_config(page_title="Gestión de Limpiezas", layout="wide")
+st.title("🧹 Gestión de Limpiezas")
+
 COLUMNS = ["Fecha", "Propiedad", "Habitación", "Cleaner", "Estado", "Origen"]
 
-# ---- CONSUMO DE INVENTARIO POR LIMPIEZA ----
 PRODUCTOS_POR_LIMPIEZA = {
     "Bolsas de basura": {"cantidad": 2, "unidad": "unidades"},
     "Esponja": {"cantidad": 1, "unidad": "unidades"},
@@ -16,27 +16,30 @@ PRODUCTOS_POR_LIMPIEZA = {
     "Ambientador": {"cantidad": 0.05, "unidad": "litros"}
 }
 
+def cargar_limpiezas():
+    docs = db.collection("cleaning").stream()
+    registros = []
+    for doc in docs:
+        data = doc.to_dict()
+        data["doc_id"] = doc.id
+        registros.append(data)
+    return pd.DataFrame(registros, columns=COLUMNS + ["doc_id"])
+
 def descontar_inventario():
-    inv_path = "data/inventory.csv"
-    if not os.path.exists(inv_path):
-        return
-    df_inv = pd.read_csv(inv_path)
-    for producto, info in PRODUCTOS_POR_LIMPIEZA.items():
-        if producto in df_inv["Producto"].values:
-            index = df_inv[df_inv["Producto"] == producto].index[0]
-            actual = float(df_inv.at[index, "Cantidad"])
-            nuevo = max(0, actual - info["cantidad"])
-            df_inv.at[index, "Cantidad"] = nuevo
-            df_inv.at[index, "Última actualización"] = datetime.date.today()
-    df_inv.to_csv(inv_path, index=False)
+    inv_docs = db.collection("inventory").stream()
+    for inv in inv_docs:
+        data = inv.to_dict()
+        nombre = data.get("Producto")
+        if nombre in PRODUCTOS_POR_LIMPIEZA:
+            cantidad_actual = float(data.get("Cantidad", 0))
+            cantidad_descuento = PRODUCTOS_POR_LIMPIEZA[nombre]["cantidad"]
+            nueva_cantidad = max(0, cantidad_actual - cantidad_descuento)
+            db.collection("inventory").document(inv.id).update({
+                "Cantidad": nueva_cantidad,
+                "Última actualización": str(datetime.date.today())
+            })
 
-# ---- CARGAR O CREAR ARCHIVO DE LIMPIEZAS ----
-if os.path.exists(FILE_PATH):
-    df = pd.read_csv(FILE_PATH)
-else:
-    df = pd.DataFrame(columns=COLUMNS)
-
-st.title("🧹 Gestión de Limpiezas")
+df = cargar_limpiezas()
 
 # ---- FILTROS ----
 st.subheader("🔍 Filtros")
@@ -72,18 +75,22 @@ with st.form("form_limpieza", clear_on_submit=True):
     submitted = st.form_submit_button("Guardar limpieza")
 
     if submitted:
-        nueva = pd.DataFrame([[fecha, propiedad, habitacion, cleaner, estado, origen]], columns=COLUMNS)
-        df = pd.concat([df, nueva], ignore_index=True)
-        df.to_csv(FILE_PATH, index=False)
+        nueva = {
+            "Fecha": str(fecha),
+            "Propiedad": propiedad,
+            "Habitación": habitacion,
+            "Cleaner": cleaner,
+            "Estado": estado,
+            "Origen": origen
+        }
+        db.collection("cleaning").add(nueva)
         st.success("✅ Limpieza registrada correctamente")
         st.rerun()
 
 # ---- ACTUALIZAR ESTADO ----
 st.subheader("🔁 Actualizar Estado")
 if not df.empty:
-    df_actualizacion = df.copy()
-    df_actualizacion["ID"] = df_actualizacion.index
-    for _, row in df_actualizacion.iterrows():
+    for _, row in df.iterrows():
         col1, col2, col3, col4 = st.columns([2, 2, 2, 1])
         with col1:
             st.write(row["Fecha"])
@@ -94,14 +101,13 @@ if not df.empty:
                 "Cambiar estado",
                 ["Pendiente", "En progreso", "Completado"],
                 index=["Pendiente", "En progreso", "Completado"].index(row["Estado"]),
-                key=row["ID"]
+                key=row["doc_id"]
             )
         with col4:
-            if st.button("Actualizar", key=f"update_{row['ID']}"):
-                df.loc[row["ID"], "Estado"] = nuevo_estado
+            if st.button("Actualizar", key=f"update_{row['doc_id']}"):
+                db.collection("cleaning").document(row["doc_id"]).update({"Estado": nuevo_estado})
                 if nuevo_estado == "Completado":
                     descontar_inventario()
-                df.to_csv(FILE_PATH, index=False)
                 st.success("✅ Estado actualizado")
                 st.rerun()
 

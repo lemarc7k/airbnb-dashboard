@@ -1,197 +1,138 @@
 import streamlit as st
 import pandas as pd
-import os
 import datetime
-
-# RUTAS Y CONFIG
-BOOKINGS_PATH = "data/bookings.csv"
-CLEANING_PATH = "data/cleaning_schedule.csv"
-BOOKINGS_COLUMNS = ["Fecha", "Propiedad", "Huesped", "Check-in", "Check-out", "Canal", "Noches", "Huespedes", "Precio", "Pago", "Notas"]
-CLEANING_COLUMNS = ["Fecha", "Propiedad", "Cleaner", "Estado"]
+from firebase_config import db
 
 st.set_page_config(page_title="Registrar Reservas", layout="wide")
-st.title("RESERVAS")
+st.title("📘 Registro de Reservas (conectado a Firebase)")
 
-# ---------- FUNCIONES AUXILIARES ----------
-def cargar_datos_csv(path, columnas):
-    if os.path.exists(path):
-        df = pd.read_csv(path)
-        for col in columnas:
-            if col not in df.columns:
-                df[col] = ""
-        return df
-    return pd.DataFrame(columns=columnas)
+# ----------------------- FUNCIONES FIREBASE --------------------------- #
+def obtener_reservas():
+    docs = db.collection("bookings").stream()
+    return [{**doc.to_dict(), "id": doc.id} for doc in docs]
 
-def sincronizar_limpiezas_auto(df_bookings):
-    clean_path = CLEANING_PATH
-    columnas_clean = ["Fecha", "Propiedad", "Habitación", "Cleaner", "Estado", "Origen"]
-
-    # Cargar el CSV de limpiezas
-    if os.path.exists(clean_path):
-        df_clean = pd.read_csv(clean_path)
+def agregar_o_actualizar_reserva(data, edit_id=None):
+    if edit_id:
+        db.collection("bookings").document(edit_id).set(data)
     else:
-        df_clean = pd.DataFrame(columns=columnas_clean)
+        db.collection("bookings").add(data)
 
-    # Eliminar las limpiezas automáticas existentes
-    df_clean = df_clean[df_clean["Origen"] != "Auto"]
+def eliminar_reserva(doc_id):
+    db.collection("bookings").document(doc_id).delete()
 
-    # Crear nuevas limpiezas basadas en reservas activas
-    nuevas = []
-    for _, row in df_bookings.iterrows():
-        if pd.notnull(row["Check-out"]) and "Habitación" in row:
-            fecha_limpieza = pd.to_datetime(row["Check-out"]).date()
-            nuevas.append({
-                "Fecha": fecha_limpieza,
-                "Propiedad": row["Propiedad"],
-                "Habitación": row.get("Habitación", ""),
-                "Cleaner": "",
-                "Estado": "Pendiente",
-                "Origen": "Auto"
-            })
+# ----------------------- DATOS --------------------------- #
+datos = obtener_reservas()
+df = pd.DataFrame(datos)
 
-    # Concatenar con las manuales y guardar
-    df_final = pd.concat([df_clean, pd.DataFrame(nuevas)], ignore_index=True)
-    df_final.to_csv(clean_path, index=False)
+if not df.empty:
+    df["Check-in"] = pd.to_datetime(df["Check-in"], errors="coerce")
+    df["Check-out"] = pd.to_datetime(df["Check-out"], errors="coerce")
+    df["Fecha"] = pd.to_datetime(df["Fecha"], errors="coerce")
 
-
-# ---------- CARGA DE DATOS ----------
-df_bookings = cargar_datos_csv(BOOKINGS_PATH, BOOKINGS_COLUMNS)
-df_bookings["Check-in"] = pd.to_datetime(df_bookings["Check-in"], errors="coerce")
-df_bookings["Check-out"] = pd.to_datetime(df_bookings["Check-out"], errors="coerce")
-
-# ---------- CATEGORIZACIÓN DE ESTADOS ----------
+# ----------------------- ESTADOS --------------------------- #
 def clasificar_estado(row):
-    if pd.isnull(row["Check-in"]) or pd.isnull(row["Check-out"]):
-        return ""
-    hoy_dt = pd.to_datetime(datetime.date.today())
-    if row["Check-in"] <= hoy_dt <= row["Check-out"]:
-        return "Currently hosting"
-    elif row["Check-in"] > hoy_dt:
-        return "Upcoming"
-    elif row["Check-out"] == hoy_dt:
-        return "Checking out"
-    elif row["Check-in"] == hoy_dt:
-        return "Arriving soon"
-    elif row["Check-out"] < hoy_dt:
-        return "Pending review"
+    hoy = pd.to_datetime(datetime.date.today())
+    if pd.isnull(row["Check-in"]) or pd.isnull(row["Check-out"]): return ""
+    if row["Check-in"] <= hoy <= row["Check-out"]: return "Currently hosting"
+    if row["Check-in"] > hoy: return "Upcoming"
+    if row["Check-out"] == hoy: return "Checking out"
+    if row["Check-in"] == hoy: return "Arriving soon"
+    if row["Check-out"] < hoy: return "Pending review"
     return ""
 
-df_bookings["Estado"] = df_bookings.apply(clasificar_estado, axis=1)
+df["Estado"] = df.apply(clasificar_estado, axis=1)
 
-# ---------- CATEGORÍAS DINÁMICAS ----------
-st.subheader("Filtrado por estado de reservas")
-conteos = df_bookings["Estado"].value_counts().to_dict()
-selected_estado = st.session_state.get("selected_estado", None)
-
+# ----------------------- FILTRADO --------------------------- #
+st.subheader("🔍 Filtrado por estado")
+conteos = df["Estado"].value_counts().to_dict()
 col1, col2, col3, col4, col5 = st.columns(5)
-with col1:
-    if st.button(f"Currently hosting ({conteos.get('Currently hosting', 0)})"):
-        st.session_state.selected_estado = "Currently hosting"
-with col2:
-    if st.button(f"Upcoming ({conteos.get('Upcoming', 0)})"):
-        st.session_state.selected_estado = "Upcoming"
-with col3:
-    if st.button(f"Checking out ({conteos.get('Checking out', 0)})"):
-        st.session_state.selected_estado = "Checking out"
-with col4:
-    if st.button(f"Arriving soon ({conteos.get('Arriving soon', 0)})"):
-        st.session_state.selected_estado = "Arriving soon"
-with col5:
-    if st.button(f"Pending review ({conteos.get('Pending review', 0)})"):
-        st.session_state.selected_estado = "Pending review"
+with col1: st.button(f"Currently hosting ({conteos.get('Currently hosting', 0)})", key="f1", on_click=lambda: st.session_state.update({"selected_estado": "Currently hosting"}))
+with col2: st.button(f"Upcoming ({conteos.get('Upcoming', 0)})", key="f2", on_click=lambda: st.session_state.update({"selected_estado": "Upcoming"}))
+with col3: st.button(f"Checking out ({conteos.get('Checking out', 0)})", key="f3", on_click=lambda: st.session_state.update({"selected_estado": "Checking out"}))
+with col4: st.button(f"Arriving soon ({conteos.get('Arriving soon', 0)})", key="f4", on_click=lambda: st.session_state.update({"selected_estado": "Arriving soon"}))
+with col5: st.button(f"Pending review ({conteos.get('Pending review', 0)})", key="f5", on_click=lambda: st.session_state.update({"selected_estado": "Pending review"}))
 
 estado_actual = st.session_state.get("selected_estado")
-if estado_actual in df_bookings["Estado"].values:
-    df_estado = df_bookings[df_bookings["Estado"] == estado_actual]
-    for _, current in df_estado.iterrows():
+if estado_actual and estado_actual in df["Estado"].values:
+    df_estado = df[df["Estado"] == estado_actual]
+    for _, row in df_estado.iterrows():
         st.markdown(f"""
-        <div style='background: white; border: 1px solid #ccc; border-radius: 10px; padding: 15px; margin-top: 15px; width: 240px; display: inline-block; margin-right: 15px;'>
-            <p style='color: crimson; font-weight: bold;'>{estado_actual}</p>
-            <p style='margin: 0; font-size: 18px; font-weight: bold;'>{current['Huesped']}</p>
-            <p style='margin: 0;'>{current['Check-in'].strftime('%d %b')} – {current['Check-out'].strftime('%d %b')}</p>
-            <p style='margin: 0;'>{current['Propiedad']}</p>
-        </div>
+            <div style='background:#fff;border:1px solid #ccc;border-radius:10px;padding:10px;margin:5px;width:260px;display:inline-block'>
+                <p style='color:crimson;font-weight:bold'>{estado_actual}</p>
+                <p style='margin:0;font-size:18px;font-weight:bold'>{row["Huesped"]}</p>
+                <p style='margin:0'>{row["Check-in"].strftime('%d %b')} - {row["Check-out"].strftime('%d %b')}</p>
+                <p style='margin:0'>{row["Propiedad"]}</p>
+            </div>
         """, unsafe_allow_html=True)
 
-# ---------- FORMULARIO ----------
-st.subheader("Añadir o Editar una reserva")
+# ----------------------- FORMULARIO --------------------------- #
+st.subheader("📝 Añadir o Editar una reserva")
+edit_id = st.session_state.get("edit_id")
+modo = "Editar" if edit_id else "Nueva"
 
-if "edit_id" not in st.session_state:
-    st.session_state.edit_id = None
+datos_editar = next((d for d in datos if d["id"] == edit_id), None)
+hoy = datetime.date.today()
 
-if st.session_state.edit_id is not None:
-    row = df_bookings.loc[st.session_state.edit_id]
-    modo = "Editar"
-else:
-    row = {col: "" for col in BOOKINGS_COLUMNS}
-    modo = "Nueva"
-
-with st.form("form_booking", clear_on_submit=True):
+with st.form("form_reserva", clear_on_submit=True):
     st.markdown(f"### {modo} reserva")
     col1, col2 = st.columns(2)
     with col1:
-        propiedad = st.text_input("Nombre de la propiedad", value=row["Propiedad"])
-        habitacion = st.text_input("Habitación", value=row.get("Habitación", ""))
-        huesped = st.text_input("Nombre del huésped", value=row["Huesped"])
-        canal = st.selectbox("Canal de reserva", ["Airbnb", "Booking", "Directo", "StayMate", "Otro"],
-                             index=0 if row["Canal"] == "" else ["Airbnb", "Booking", "Directo", "StayMate", "Otro"].index(row["Canal"]))
-        noches = st.number_input("Número de noches", min_value=1, value=int(row["Noches"]) if row["Noches"] else 1)
-        huespedes = st.number_input("Nº de huéspedes", min_value=1, value=int(row["Huespedes"]) if row["Huespedes"] else 1)
+        propiedad = st.text_input("Propiedad", value=datos_editar.get("Propiedad", "") if datos_editar else "")
+        habitacion = st.text_input("Habitación", value=datos_editar.get("Habitación", "") if datos_editar else "")
+        huesped = st.text_input("Huésped", value=datos_editar.get("Huesped", "") if datos_editar else "")
+        canal = st.selectbox("Canal", ["Airbnb", "Booking", "Directo", "StayMate", "Otro"], index=0)
+        noches = st.number_input("Noches", min_value=1, value=int(datos_editar.get("Noches", 1)) if datos_editar else 1)
+        huespedes = st.number_input("Huéspedes", min_value=1, value=int(datos_editar.get("Huespedes", 1)) if datos_editar else 1)
     with col2:
-        check_in = st.date_input("Fecha de Check-in",
-                                 value=row["Check-in"].date() if isinstance(row["Check-in"], (pd.Timestamp, datetime.datetime)) else datetime.date.today())
-        check_out = st.date_input("Fecha de Check-out",
-                                  value=row["Check-out"].date() if isinstance(row["Check-out"], (pd.Timestamp, datetime.datetime)) else datetime.date.today())
-        precio = st.number_input("Precio total (AUD)", min_value=0.0, step=10.0,
-                                 value=float(row["Precio"]) if row["Precio"] else 0.0)
-        pago = st.text_input("Método de pago", value=row["Pago"])
-        notas = st.text_area("Notas internas", value=row["Notas"])
+        check_in = st.date_input("Check-in", value=pd.to_datetime(datos_editar.get("Check-in")).date() if datos_editar else hoy)
+        check_out = st.date_input("Check-out", value=pd.to_datetime(datos_editar.get("Check-out")).date() if datos_editar else hoy)
+        precio = st.number_input("Precio (AUD)", min_value=0.0, step=10.0, value=float(datos_editar.get("Precio", 0.0)) if datos_editar else 0.0)
+        pago = st.text_input("Método de pago", value=datos_editar.get("Pago", "") if datos_editar else "")
+        notas = st.text_area("Notas", value=datos_editar.get("Notas", "") if datos_editar else "")
 
-    submitted = st.form_submit_button("Guardar")
-    if submitted:
-        nueva_fila = pd.DataFrame([[
-            pd.Timestamp.now(), propiedad, habitacion, huesped,
-            pd.to_datetime(check_in), pd.to_datetime(check_out),
-            canal, noches, huespedes, precio, pago, notas
-        ]], columns=["Fecha", "Propiedad", "Habitación", "Huesped", "Check-in", "Check-out", "Canal", "Noches", "Huespedes", "Precio", "Pago", "Notas"])
-
-        if st.session_state.edit_id is not None:
-            df_bookings.loc[st.session_state.edit_id] = nueva_fila.iloc[0]
-            st.success("Reserva actualizada correctamente")
-            st.session_state.edit_id = None
-        else:
-            df_bookings = pd.concat([df_bookings, nueva_fila], ignore_index=True)
-            st.success("Reserva añadida correctamente")
-
-        df_bookings.to_csv(BOOKINGS_PATH, index=False)
-        sincronizar_limpiezas_auto(df_bookings)
+    enviar = st.form_submit_button("Guardar")
+    if enviar:
+        data = {
+            "Fecha": pd.Timestamp.now(),
+            "Propiedad": propiedad,
+            "Habitación": habitacion,
+            "Huesped": huesped,
+            "Check-in": str(check_in),
+            "Check-out": str(check_out),
+            "Canal": canal,
+            "Noches": noches,
+            "Huespedes": huespedes,
+            "Precio": precio,
+            "Pago": pago,
+            "Notas": notas
+        }
+        agregar_o_actualizar_reserva(data, edit_id)
+        st.success("✅ Reserva guardada correctamente")
+        st.session_state.edit_id = None
         st.rerun()
 
-# ---------- HISTORIAL DE RESERVAS ----------
-st.subheader("Historial de reservas")
+# ----------------------- HISTORIAL --------------------------- #
+st.subheader("📚 Historial de reservas")
 
-for idx, row in df_bookings.iterrows():
-    with st.expander(f"{row['Propiedad']} - {row['Huesped']} ({row['Check-in']} ➜ {row['Check-out']})"):
+for r in datos:
+    with st.expander(f"{r['Propiedad']} - {r['Huesped']} ({r['Check-in']} ➜ {r['Check-out']})"):
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown(f"**Canal:** {row['Canal']}")
-            st.markdown(f"**Noches:** {row['Noches']}")
-            st.markdown(f"**Huéspedes:** {row['Huespedes']}")
+            st.markdown(f"**Canal:** {r['Canal']}")
+            st.markdown(f"**Noches:** {r['Noches']}")
+            st.markdown(f"**Huéspedes:** {r['Huespedes']}")
         with col2:
-            st.markdown(f"**Precio:** ${row['Precio']}")
-            st.markdown(f"**Pago:** {row['Pago']}")
-        st.markdown(f"**Notas:** {row['Notas']}")
+            st.markdown(f"**Precio:** ${r['Precio']}")
+            st.markdown(f"**Pago:** {r['Pago']}")
+        st.markdown(f"**Notas:** {r['Notas']}")
 
         col3, col4 = st.columns([1, 6])
         with col3:
-            if st.button("Eliminar", key=f"del_{idx}"):
-                df_bookings.drop(index=idx, inplace=True)
-                df_bookings.reset_index(drop=True, inplace=True)
-                df_bookings.to_csv(BOOKINGS_PATH, index=False)
-                sincronizar_limpiezas_auto(df_bookings)  # <-- Esta línea es crucial
-                st.success("Reserva eliminada")
+            if st.button("Eliminar", key=f"del_{r['id']}"):
+                eliminar_reserva(r["id"])
+                st.success("✅ Eliminada correctamente")
                 st.rerun()
         with col4:
-            if st.button("Editar", key=f"edit_{idx}"):
-                st.session_state.edit_id = idx
+            if st.button("Editar", key=f"edit_{r['id']}"):
+                st.session_state.edit_id = r["id"]
                 st.rerun()
