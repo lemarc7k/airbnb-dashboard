@@ -1,106 +1,102 @@
-import streamlit as st
-import pandas as pd
-import datetime
-import altair as alt
-from firebase_config import db
+# 🏠 Airbnb Property Management Dashboard
 
-st.set_page_config(page_title="Dashboard", layout="wide")
-st.markdown("""
-<style>
-.big-title {
-font-size: 36px;
-font-weight: 600;
-}
-.big-number {
-font-size: 48px;
-color: #e60073;
-font-weight: bold;
-}
-.upcoming {
-color: grey;
-margin-bottom: 20px;
-}
-.box-summary {
-border: 1px solid #ddd;
-border-radius: 10px;
-padding: 20px;
-background-color: #fff;
-}
-</style>
-""", unsafe_allow_html=True)
+Este proyecto es un panel de control creado con **Streamlit** para la gestión de apartamentos estilo Airbnb. Permite visualizar y gestionar reservas, limpiezas, inventario, incidencias y reportes, todo desde el navegador.
 
-# ---------- FUNCIONES PARA FIRESTORE ----------
+---
 
-def obtener_datos_bookings():
-bookings_ref = db.collection("bookings")
-docs = bookings_ref.stream()
-data = []
-for doc in docs:
-d = doc.to_dict()
-d["id"] = doc.id
-data.append(d)
-df = pd.DataFrame(data)
-if not df.empty:
-df["Check-in"] = pd.to_datetime(df.get("Check-in"), errors="coerce")
-df["Mes"] = df["Check-in"].dt.to_period("M").dt.to_timestamp()
-df["Check-out"] = pd.to_datetime(df.get("Check-out"), errors="coerce")
-df["Fecha"] = pd.to_datetime(df.get("Fecha"), errors="coerce")
-df["Precio"] = pd.to_numeric(df.get("Precio"), errors="coerce").fillna(0)
-df["Huespedes"] = pd.to_numeric(df.get("Huespedes"), errors="coerce").fillna(0).astype(int)
-df["Noches"] = pd.to_numeric(df.get("Noches"), errors="coerce").fillna(0).astype(int)
-return df
+## 🚀 ¿Qué incluye?
 
-# ---------- CARGAR DATOS ----------
+- 📅 Calendario de bookings
+- 🧹 Limpiezas programadas
+- 📦 Inventario de productos
+- ⚠️ Reporte de incidencias
+- 📊 Reportes semanales
 
-df = obtener_datos_bookings()
-hoy = datetime.date.today()
-mes_actual = pd.to_datetime(hoy).to_period("M").to_timestamp()
+---
 
-# ---------- INGRESOS Y GRÁFICO PRINCIPAL ----------
+## 🛠️ Requisitos
 
-st.markdown("## Earnings")
-ingresos_mes = df[df["Mes"] == mes_actual]["Precio"].sum()
-upcoming = df[df["Check-in"] > pd.to_datetime(hoy)]["Precio"].sum()
+- Python 3.8 o superior
+- pip
 
-# Crear rango completo de meses
+---
 
-meses_completos = pd.date_range(start="2024-10-01", end=hoy, freq="MS")
-df_meses = pd.DataFrame({"Mes": meses_completos})
+## 📦 Instalación
 
-# Agrupar ingresos y unir con rango completo
+1. Clona el repositorio o descomprime este archivo zip en tu ordenador:
 
-ingresos_por_mes = df.groupby("Mes")["Precio"].sum().reset_index()
-ingresos_por_mes = df_meses.merge(ingresos_por_mes, on="Mes", how="left").fillna(0)
-ingresos_por_mes["Mes"] = ingresos_por_mes["Mes"].dt.strftime("%b")
+```bash
+git clone https://github.com/tu-usuario/airbnb_dashboard.git
+cd airbnb_dashboard
+```
 
-col_main, col_side = st.columns([3, 1])
-with col_main:
-st.markdown(f"<div class='big-title'>You’ve made</div>", unsafe_allow_html=True)
-st.markdown(f"<div class='big-number'>${ingresos_mes:,.2f} AUD</div>", unsafe_allow_html=True)
-st.markdown(f"<div class='upcoming'>Upcoming ${upcoming:,.2f} AUD</div>", unsafe_allow_html=True)
+2. Instala las dependencias:
 
-    chart = alt.Chart(ingresos_por_mes).mark_bar(
-        cornerRadiusTopLeft=8, cornerRadiusTopRight=8, color="#e60073"
-    ).encode(
-        x=alt.X("Mes", sort=list(ingresos_por_mes["Mes"])),
-        y=alt.Y("Precio", title="$ AUD"),
-        tooltip=["Mes", "Precio"]
-    ).properties(height=300)
+```bash
+pip install -r requirements.txt
+```
 
-    st.altair_chart(chart, use_container_width=True)
+3. Ejecuta la aplicación:
 
-with col_side:
-total = df["Precio"].sum()
-fee = total \* 0.03
-neto = total - fee
-st.markdown(f"""
-<div class='box-summary'>
-<h4>Year-to-date summary</h4>
-<p style='margin-bottom: 5px;'>1 Jan – {hoy:%d %b %Y}</p>
-<p><strong>Gross earnings</strong><br/>${total:,.2f} AUD</p>
-        <p><strong>Airbnb service fee (3%)</strong><br/>-${fee:,.2f} AUD</p>
-<p><strong>Tax withheld</strong><br/>$0.00 AUD</p>
-        <hr/>
-        <p><strong>Total (AUD)</strong><br/><b>${neto:,.2f} AUD</b></p>
-</div>
-""", unsafe_allow_html=True)
+```bash
+streamlit run app.py
+```
+
+---
+
+## 🌐 ¿Cómo publicarlo online?
+
+Puedes publicar esta app de forma gratuita usando [Streamlit Cloud](https://streamlit.io/cloud):
+
+1. Crea una cuenta en Streamlit Cloud.
+2. Sube este proyecto a un repositorio en GitHub.
+3. Desde Streamlit Cloud, selecciona "New app", conecta tu repo, elige `app.py` como archivo principal y listo.
+
+---
+
+## 📁 Estructura del proyecto
+
+```
+airbnb_dashboard/
+├── app.py
+├── pages/
+│   ├── 1_Bookings.py
+│   ├── 2_Cleaning.py
+│   ├── 3_Inventory.py
+│   ├── 4_Incidents.py
+│   └── 5_Reports.py
+├── data/
+│   ├── bookings.csv
+│   ├── cleaning_schedule.csv
+│   ├── inventory.csv
+│   ├── incidents.csv
+│   └── reports.csv
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## ✨ Siguiente paso
+
+- Añadir login para cleaners/socios
+- Conectar Google Sheets o base de datos real
+- Automatizar tareas (alertas, emails, resúmenes)
+
+¡Empieza ahora y lleva tu gestión Airbnb al siguiente nivel!
+
+## ✨ SCRIPTS
+
+.\venv\Scripts\activate
+
+streamlit run app.py
+
+## ✨ INTERPRETE
+
+Presiona Ctrl + Shift + P
+
+Escribe: python: Select Interpreter
+
+Ahora debería salir el menú. Dale clic.
+
+Selecciona la opción que tenga la ruta: .\venv\Scripts\python.exe
