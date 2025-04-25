@@ -3,7 +3,13 @@ import pandas as pd
 import datetime
 from firebase_config import db  # ✅ Firebase seguro con st.secrets
 
-st.set_page_config(page_title="Registro de Gastos", layout="wide")
+try:
+    # tu lógica aquí
+    st.write("✅ Página cargada correctamente")
+except Exception as e:
+    st.error(f"❌ Error cargando página: {e}")
+
+
 st.title("📒 Registro de Gastos en Firestore")
 
 # ---------- FORMULARIO ---------- #

@@ -1,9 +1,16 @@
 import streamlit as st
+st.set_page_config(page_title="🧹 Gestión de Limpiezas", layout="wide")
 import pandas as pd
 import datetime
 from firebase_config import db
 
-st.set_page_config(page_title="🧹 Gestión de Limpiezas", layout="wide")
+try:
+    # tu lógica aquí
+    st.write("✅ Página cargada correctamente")
+except Exception as e:
+    st.error(f"❌ Error cargando página: {e}")
+
+
 st.title("🧹 Gestión de Limpiezas")
 
 # ----- PRODUCTOS POR LIMPIEZA -----

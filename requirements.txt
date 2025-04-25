@@ -3,4 +3,4 @@ pandas
 altair
 streamlit-calendar
 streamlit-calendar==1.2.1
-firebase-admin
+

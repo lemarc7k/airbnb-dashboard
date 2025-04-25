@@ -3,7 +3,13 @@ import pandas as pd
 import datetime
 from firebase_config import db
 
-st.set_page_config(page_title="Calendario", layout="wide")
+try:
+    # tu lógica aquí
+    st.write("✅ Página cargada correctamente")
+except Exception as e:
+    st.error(f"❌ Error cargando página: {e}")
+
+
 st.title("📅 Calendario de Reservas")
 
 # ---------- CARGAR RESERVAS ----------
