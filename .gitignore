@@ -138,9 +138,10 @@ cython_debug/
 
 # ... todo lo que ya tienes arriba está perfecto ...
 
-# Clave de firebase
-firebase_key.json
 
-# Clave de firebase
+# Claves de Firebase y secretos sensibles
+firebase_key.json
 airbnb-dashboard.json
+*.secret.json
+
 
