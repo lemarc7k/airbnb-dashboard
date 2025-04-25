@@ -4,7 +4,13 @@ import datetime
 import altair as alt
 from firebase_config import db
 
-st.set_page_config(page_title="Dashboard", layout="wide")
+try:
+    # tu lógica aquí
+    st.write("✅ Página cargada correctamente")
+except Exception as e:
+    st.error(f"❌ Error cargando página: {e}")
+
+
 st.markdown("""
     <style>
         .big-title {

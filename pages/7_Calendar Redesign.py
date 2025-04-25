@@ -1,10 +1,17 @@
 import streamlit as st
+st.set_page_config(layout="wide")
 import pandas as pd
 import datetime
 import streamlit.components.v1 as components
 from firebase_config import db
 
-st.set_page_config(layout="wide")
+try:
+    # tu lógica aquí
+    st.write("✅ Página cargada correctamente")
+except Exception as e:
+    st.error(f"❌ Error cargando página: {e}")
+
+
 st.title("📅 Calendario de Reservas")
 
 @st.cache_data

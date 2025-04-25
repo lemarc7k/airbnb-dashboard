@@ -1,10 +1,17 @@
 import streamlit as st
+st.set_page_config(page_title="📋 Reportes Semanales", layout="wide")
 import pandas as pd
 import altair as alt
 from firebase_admin import firestore
 from firebase_config import db  # Asegúrate que firebase_config.py esté correcto
 
-st.set_page_config(page_title="📋 Reportes Semanales", layout="wide")
+try:
+    # tu lógica aquí
+    st.write("✅ Página cargada correctamente")
+except Exception as e:
+    st.error(f"❌ Error cargando página: {e}")
+
+
 st.title("📋 Reporte Semanal de Propiedades")
 
 # ---------- FUNCIÓN PARA CARGAR DATOS DESDE FIRESTORE ---------- #
