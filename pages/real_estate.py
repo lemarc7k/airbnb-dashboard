@@ -238,63 +238,51 @@ html, body, [class*="css"] {
 """, unsafe_allow_html=True)
 
 
-# ------------------- NUEVO NAVBAR DE NAVEGACIÓN -------------------
-
+# ------------------- NUEVO MENÚ DE NAVEGACIÓN ------------------- #
 st.markdown("""
     <style>
-    .custom-navbar {
-        display: flex;
-        justify-content: center;
-        gap: 50px;
-        padding: 20px 0;
-        background-color: #f7f7f7;
-        border-bottom: 1px solid #ccc;
-        font-weight: 600;
-        font-size: 18px;
-    }
-    .nav-item {
-        cursor: pointer;
-        transition: all 0.3s;
-        padding: 8px 15px;
-        border-radius: 10px;
-        color: #1a1a1d;
-    }
-    .nav-item:hover {
-        background-color: #00c4b3;
-        color: white;
-    }
+        .custom-navbar {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding: 25px 20px;
+            background: rgba(243, 244, 246, 0.8); /* Color con opacidad */
+            border-radius: 12px;
+            margin-bottom: 40px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+            transition: background 0.3s ease;
+        }
+
+        .nav-link {
+            font-family: 'Segoe UI', sans-serif;
+            font-weight: 600;
+            font-size: 16px;
+            padding: 10px 22px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #00c4b3, #00ffe1);
+            color: white !important;
+            text-decoration: none;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover {
+            background: linear-gradient(135deg, #009e8d, #00c4b3);
+            transform: scale(1.05);
+        }
     </style>
+
+    <div class="custom-navbar">
+        <a class="nav-link" href="/Registrar_Reserva" target="_self">Registrar Reserva</a>
+        <a class="nav-link" href="/Calendar" target="_self">Calendario</a>
+        <a class="nav-link" href="/Add_Gastos_Firestore" target="_self">Gastos</a>
+        <a class="nav-link" href="/Inventory" target="_self">Inventario</a>
+        <a class="nav-link" href="/Incidents" target="_self">Incidencias</a>
+        <a class="nav-link" href="/Reports" target="_self">Reportes</a>
+    </div>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="custom-navbar">', unsafe_allow_html=True)
 
-col1, col2, col3, col4, col5, col6 = st.columns(6)
-
-with col1:
-    if st.button("Registrar Reserva", key="nav_registrar"):
-        switch_page("Registrar_Reserva")
-
-with col2:
-    if st.button("Calendario", key="nav_calendario"):
-        switch_page("Calendar")
-
-with col3:
-    if st.button("Gastos", key="nav_gastos"):
-        switch_page("Add_Gastos_Firestore")
-
-with col4:
-    if st.button("Inventario", key="nav_inventario"):
-        switch_page("Inventory")
-
-with col5:
-    if st.button("Incidencias", key="nav_incidencias"):
-        switch_page("Incidents")
-
-with col6:
-    if st.button("Reportes", key="nav_reportes"):
-        switch_page("Reports")
-
-st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ------------------- HOME PAGE -------------------
@@ -452,38 +440,6 @@ if not df_filtrado.empty:
 else:
     st.warning("No hay datos suficientes para este periodo.")
 
-
-        
-
-# ----------- BOTONES DE NAVEGACIÓN ----------- #
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    if st.button("📘 Registrar Reserva"):
-        go_to("registrar")
-        st.rerun()
-    if st.button("📦 Inventario"):
-        go_to("inventory")
-        st.rerun()
-
-with col2:
-    if st.button("📅 Calendario"):
-        go_to("calendar")
-        st.rerun()
-    if st.button("📒 Gastos"):
-        go_to("gastos")
-        st.rerun()
-
-with col3:
-    if st.button("⚠️ Incidencias"):
-        go_to("incidents")
-        st.rerun()
-    if st.button("📋 Reportes"):
-        go_to("reports")
-        st.rerun()
-
-st.markdown("<div class='laser-line'></div>", unsafe_allow_html=True)
-st.markdown("<div class='footer'>KM Ventures Real Estate Unit ©2025</div>", unsafe_allow_html=True)
 
 
 # ----------- RESUMEN AUTOMÁTICO DE CRECIMIENTO ----------- #

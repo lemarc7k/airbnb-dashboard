@@ -100,3 +100,5 @@ Escribe: python: Select Interpreter
 Ahora debería salir el menú. Dale clic.
 
 Selecciona la opción que tenga la ruta: .\venv\Scripts\python.exe
+
+## ✨ actualizar el repositorio
