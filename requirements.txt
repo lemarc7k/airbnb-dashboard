@@ -4,3 +4,5 @@ altair
 streamlit-calendar
 streamlit-calendar==1.2.1
 streamlit-extras
+firebase-admin
+
