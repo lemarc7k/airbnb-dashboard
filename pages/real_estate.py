@@ -1,5 +1,6 @@
 # ------------------- IMPORTS -------------------
 import streamlit as st
+from streamlit_extras.switch_page_button import switch_page
 import sys
 import os
 import pandas as pd
@@ -8,7 +9,10 @@ import altair as alt
 import streamlit.components.v1 as components
 from firebase_config import db
 
+
+
 st.set_page_config(page_title="Real Estate | KM Ventures", layout="wide")
+
 
 if "real_estate_page" not in st.session_state:
     st.session_state.real_estate_page = "home"
@@ -234,17 +238,64 @@ html, body, [class*="css"] {
 """, unsafe_allow_html=True)
 
 
-# ------------------- NAVBAR -------------------
+# ------------------- NUEVO NAVBAR DE NAVEGACIÓN -------------------
+
 st.markdown("""
-    <div class="navbar">
-        <div class="navbar-item" onclick="window.location.href='/'">Inicio</div>
-        <div class="navbar-item">Real Estate</div>
-        <div class="navbar-item">Transport</div>
-        <div class="navbar-item">Cleaning</div>
-        <div class="navbar-item">IA Services</div>
-        <div class="navbar-item">Removals</div>
-    </div>
+    <style>
+    .custom-navbar {
+        display: flex;
+        justify-content: center;
+        gap: 50px;
+        padding: 20px 0;
+        background-color: #f7f7f7;
+        border-bottom: 1px solid #ccc;
+        font-weight: 600;
+        font-size: 18px;
+    }
+    .nav-item {
+        cursor: pointer;
+        transition: all 0.3s;
+        padding: 8px 15px;
+        border-radius: 10px;
+        color: #1a1a1d;
+    }
+    .nav-item:hover {
+        background-color: #00c4b3;
+        color: white;
+    }
+    </style>
 """, unsafe_allow_html=True)
+
+st.markdown('<div class="custom-navbar">', unsafe_allow_html=True)
+
+col1, col2, col3, col4, col5, col6 = st.columns(6)
+
+with col1:
+    if st.button("Registrar Reserva", key="nav_registrar"):
+        switch_page("Registrar_Reserva")
+
+with col2:
+    if st.button("Calendario", key="nav_calendario"):
+        switch_page("Calendar")
+
+with col3:
+    if st.button("Gastos", key="nav_gastos"):
+        switch_page("Add_Gastos_Firestore")
+
+with col4:
+    if st.button("Inventario", key="nav_inventario"):
+        switch_page("Inventory")
+
+with col5:
+    if st.button("Incidencias", key="nav_incidencias"):
+        switch_page("Incidents")
+
+with col6:
+    if st.button("Reportes", key="nav_reportes"):
+        switch_page("Reports")
+
+st.markdown('</div>', unsafe_allow_html=True)
+
 
 # ------------------- HOME PAGE -------------------
 if st.session_state.real_estate_page == "home":

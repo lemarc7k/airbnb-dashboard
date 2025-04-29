@@ -1,7 +1,15 @@
 import streamlit as st
+from streamlit_extras.switch_page_button import switch_page
 
-# Configuración general
-st.set_page_config(page_title="KM Ventures", layout="wide")
+st.set_page_config(page_title="Dashboard KM Ventures", layout="wide")
+
+st.title("Airbnb Property Management Dashboard")
+st.write("Bienvenido al panel de control de propiedades Airbnb. Usa el menú para navegar por los módulos.")
+
+# Ejemplo: Redirección si haces clic
+if st.button("Ir a Real Estate"):
+    switch_page("real_estate")
+
 
 # Estilos CSS mejorados
 st.markdown("""
