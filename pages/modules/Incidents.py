@@ -1,5 +1,4 @@
 import streamlit as st
-st.set_page_config(page_title="Incidentes", layout="wide")
 import pandas as pd
 import datetime
 from firebase_config import db
