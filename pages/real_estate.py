@@ -48,7 +48,9 @@ mes_actual = pd.to_datetime(hoy).to_period("M").to_timestamp()
 meses_completos = pd.date_range(start=f"{anio_actual}-01-01", end=f"{anio_actual}-12-01", freq="MS")
 df_meses = pd.DataFrame({"Mes": meses_completos})
 
-# ------------------- CSS -------------------
+
+#.-------------STYLE CSS--------------
+
 st.markdown("""
 <style>
 /* -------- CONFIGURACIÓN GLOBAL -------- */
@@ -116,55 +118,27 @@ html, body, [class*="css"] {
     100% {opacity: 0.4;}
 }
 
-/* -------- KPIs PRINCIPALES -------- */
-.big-title {
-    font-size: 36px;
-    font-weight: 600;
-    margin-bottom: 10px;
-}
-.big-number {
-    font-size: 48px;
-    font-weight: bold;
-    color: #e60073;
-    margin-bottom: 10px;
-}
-.upcoming {
-    color: grey;
-    font-size: 16px;
-    margin-bottom: 30px;
-}
-
-/* -------- RESUMEN ANUAL -------- */
-.box-summary {
+/* -------- KPIs -------- */
+.kpi-card {
     background-color: #ffffff;
     color: #1a1a1d;
-    border: 1px solid #ddd;
-    border-radius: 10px;
-    padding: 20px;
-    font-size: 14px;
-    box-shadow: 0px 2px 8px rgba(0,0,0,0.1);
-}
-
-/* -------- KPI CARDS -------- */
-.kpi-card {
-    background-color: #f9f9f9;
-    color: #1a1a1d;
     border-radius: 12px;
-    padding: 20px;
+    padding: 8px 14px;
+    margin: 10px 0;
     text-align: center;
-    margin-bottom: 20px;
-    box-shadow: 0px 2px 6px rgba(0,0,0,0.15);
-    transition: background-color 0.3s, color 0.3s;
+    box-shadow: 0px 2px 8px rgba(0,0,0,0.06);
+    transition: all 0.3s ease;
 }
-.kpi-title {
-    font-size: 16px;
+.kpi-card .kpi-title {
+    font-size: 14px;
     font-weight: 600;
-    margin-bottom: 10px;
+    color: #666;
+    margin-bottom: 5px;
 }
-.kpi-value {
-    font-size: 28px;
+.kpi-card .kpi-value {
+    font-size: 18px;
     font-weight: bold;
-    color: black;
+    color: #111;
 }
 
 /* -------- FOOTER -------- */
@@ -175,24 +149,51 @@ html, body, [class*="css"] {
     color: #666;
 }
 
-/* -------- RESPONSIVE (Móvil) -------- */
+/* -------- RESPONSIVE MÓVIL & TABLET -------- */
 @media screen and (max-width: 768px) {
     .navbar {
         flex-direction: column;
         gap: 10px;
     }
     .header-title {
-        font-size: 36px;
+        font-size: 32px;
     }
     .big-number {
-        font-size: 36px;
+        font-size: 32px;
     }
-    .kpi-value {
-        font-size: 22px;
+    .kpi-card {
+        margin: 8px 0;
+        padding: 10px 8px;
+    }
+    .kpi-card .kpi-title {
+        font-size: 13px;
+    }
+    .kpi-card .kpi-value {
+        font-size: 20px;
     }
 }
 
-/* -------- MODO LIGHT/DARK DETECCIÓN -------- */
+/* -------- ESCRITORIO (más compacto) -------- */
+@media screen and (min-width: 1024px) {
+    .kpi-card {
+        padding: 8px 14px;
+        margin: 10px 0;
+    }
+    .kpi-card .kpi-title {
+        font-size: 13px;
+    }
+    .kpi-card .kpi-value {
+        font-size: 17px;
+    }
+    .block-container {
+        padding: 2rem 4rem !important;
+    }
+    h3, h4 {
+        margin-top: 30px;
+    }
+}
+
+/* -------- LIGHT MODE -------- */
 @media (prefers-color-scheme: light) {
     html, body, [class*="css"] {
         background-color: #f7f7f7;
@@ -215,72 +216,70 @@ html, body, [class*="css"] {
     .subtitle {
         color: #666;
     }
-    .box-summary {
-        background-color: #ffffff;
-        color: #1a1a1d;
-    }
     .kpi-card {
         background-color: #ffffff;
         color: #1a1a1d;
-        box-shadow: 0px 2px 10px rgba(0,0,0,0.05);
+        box-shadow: 0px 2px 8px rgba(0,0,0,0.05);
     }
-    .kpi-title {
+    .kpi-card .kpi-title {
         color: #555;
     }
-    .kpi-value {
+    .kpi-card .kpi-value {
         color: #222;
     }
     .footer {
         color: #999;
     }
 }
+
+/* -------- MENÚ SUPERIOR CUSTOM -------- */
+.custom-navbar {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 18px;
+    padding: 20px 15px;
+    background: rgba(243, 244, 246, 0.88);
+    border-radius: 12px;
+    margin-bottom: 40px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    transition: background 0.3s ease;
+}
+.nav-link {
+    font-family: 'Segoe UI', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    padding: 8px 18px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #00c4b3, #00ffe1);
+    color: white !important;
+    text-decoration: none;
+    white-space: nowrap;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
+    transition: all 0.3s ease;
+}
+.nav-link:hover {
+    background: linear-gradient(135deg, #009e8d, #00c4b3);
+    transform: scale(1.05);
+}
+@media screen and (max-width: 768px) {
+    .custom-navbar {
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+    .nav-link {
+        font-size: 15px;
+        padding: 12px 20px;
+        width: 100%;
+        max-width: 320px;
+        text-align: center;
+    }
+}
 </style>
 """, unsafe_allow_html=True)
 
 
-# ------------------- NUEVO MENÚ DE NAVEGACIÓN ------------------- #
-st.markdown("""
-    <style>
-        .custom-navbar {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            padding: 25px 20px;
-            background: rgba(243, 244, 246, 0.8); /* Color con opacidad */
-            border-radius: 12px;
-            margin-bottom: 40px;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
-            transition: background 0.3s ease;
-        }
-
-        .nav-link {
-            font-family: 'Segoe UI', sans-serif;
-            font-weight: 600;
-            font-size: 16px;
-            padding: 10px 22px;
-            border-radius: 10px;
-            background: linear-gradient(135deg, #00c4b3, #00ffe1);
-            color: white !important;
-            text-decoration: none;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-            transition: all 0.3s ease;
-        }
-
-        .nav-link:hover {
-            background: linear-gradient(135deg, #009e8d, #00c4b3);
-            transform: scale(1.05);
-        }
-    </style>
-
-    <div class="custom-navbar">
-        <a class="nav-link" href="/Registrar_Reserva" target="_self">Registrar Reserva</a>
-        <a class="nav-link" href="/Calendar" target="_self">Calendario</a>
-        <a class="nav-link" href="/Add_Gastos_Firestore" target="_self">Gastos</a>
-        <a class="nav-link" href="/Inventory" target="_self">Inventario</a>
-        <a class="nav-link" href="/Incidents" target="_self">Incidencias</a>
-        <a class="nav-link" href="/Reports" target="_self">Reportes</a>
-    </div>
-""", unsafe_allow_html=True)
 
 
 
@@ -341,52 +340,172 @@ if st.session_state.real_estate_page == "home":
 
     st.markdown("<hr style='margin-top:30px;'>", unsafe_allow_html=True)
 
-# ---------- KPIs de Real Estate mejorados (sin iconos, diseño profesional) ---------- #
-if not df.empty:
-    st.markdown("---")
-    st.subheader("KPIs de Real Estate")
+# ----------- RESUMEN EJECUTIVO ----------- #
+st.markdown("### 📊 Resumen Ejecutivo")
 
-    # KPIs de precios medios
-    precio_medio_noche = df["Precio"].sum() / df["Noches"].sum() if df["Noches"].sum() != 0 else 0
-    precio_medio_semana = precio_medio_noche * 7
-    precio_medio_mes = precio_medio_noche * 30
+# 1. Ingresos por mes actual y anterior
+mes_actual = hoy.strftime("%Y-%m")
+mes_anterior = (hoy - pd.DateOffset(months=1)).strftime("%Y-%m")
 
-    # KPIs de ingresos
-    ingreso_total_semana = df[df["Check-in"] >= pd.to_datetime(hoy) - pd.Timedelta(weeks=1)]["Precio"].sum()
-    ingreso_total_mes = df[df["Check-in"] >= pd.to_datetime(hoy) - pd.DateOffset(months=1)]["Precio"].sum()
-    ingreso_total_6m = df[df["Check-in"] >= pd.to_datetime(hoy) - pd.DateOffset(months=6)]["Precio"].sum()
-    ingreso_total_anual = df[df["Check-in"] >= pd.to_datetime(hoy) - pd.DateOffset(years=1)]["Precio"].sum()
+df["Mes"] = df["Check-in"].dt.strftime("%Y-%m")
+ingreso_actual = df[df["Mes"] == mes_actual]["Precio"].sum()
+ingreso_anterior = df[df["Mes"] == mes_anterior]["Precio"].sum()
 
-    # Organización visual de KPIs
-    st.markdown("<div style='display: flex; flex-wrap: wrap; justify-content: space-between;'>", unsafe_allow_html=True)
+variacion = ((ingreso_actual - ingreso_anterior) / ingreso_anterior * 100) if ingreso_anterior != 0 else 0
 
-    def kpi_card(title, value):
+# 2. Habitación más rentable en los últimos 6 meses
+df_ultimos_6m = df[df["Check-in"] >= hoy - pd.DateOffset(months=6)]
+habitacion_rentable = (
+    df_ultimos_6m.groupby("Habitación")["Precio"]
+    .sum()
+    .sort_values(ascending=False)
+    .reset_index()
+)
+
+if not habitacion_rentable.empty:
+    habitacion_top = habitacion_rentable.iloc[0]["Habitación"]
+    ingreso_top = habitacion_rentable.iloc[0]["Precio"]
+else:
+    habitacion_top = "N/A"
+    ingreso_top = 0
+
+# Visualización
+col1, col2 = st.columns(2)
+
+with col1:
+    st.markdown(f"""
+    <div class='kpi-card'>
+        <div class='kpi-title'>Ingreso Mes Actual</div>
+        <div class='kpi-value'>${ingreso_actual:,.2f} AUD</div>
+    </div>
+    <div class='kpi-card'>
+        <div class='kpi-title'>Ingreso Mes Anterior</div>
+        <div class='kpi-value'>${ingreso_anterior:,.2f} AUD</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+with col2:
+    st.markdown(f"""
+    <div class='kpi-card'>
+        <div class='kpi-title'>Variación Mensual</div>
+        <div class='kpi-value'>{variacion:.2f}%</div>
+    </div>
+    <div class='kpi-card'>
+        <div class='kpi-title'>Habitación más rentable</div>
+        <div class='kpi-value'>{habitacion_top}: ${ingreso_top:,.2f} AUD</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ----------- KPIs FINANCIEROS CON VISUALIZACIÓN Y DISEÑO RESPONSIVO ----------- #
+
+st.subheader("KPIs Financieros")
+
+# ---------- CONFIGURACIÓN GENERAL ---------- #
+hoy = pd.to_datetime(datetime.date.today())
+df["Check-in"] = pd.to_datetime(df["Check-in"], errors="coerce")
+df["Precio"] = pd.to_numeric(df["Precio"], errors="coerce").fillna(0)
+df["Habitación"] = df.get("Habitación", "Desconocida")
+
+# ---------- LAYOUT ---------- #
+col_izq, col_der = st.columns([1.3, 1])
+
+# ---------- BLOQUE IZQUIERDO (DETALLES) ---------- #
+with col_izq:
+    st.markdown("### Ingresos Totales")
+    ingresos_totales = {
+        "Semana": df[df["Check-in"] >= hoy - pd.Timedelta(days=7)]["Precio"].sum(),
+        "Mes": df[df["Check-in"] >= hoy - pd.DateOffset(months=1)]["Precio"].sum(),
+        "6 Meses": df[df["Check-in"] >= hoy - pd.DateOffset(months=6)]["Precio"].sum(),
+        "Año": df[df["Check-in"] >= hoy - pd.DateOffset(years=1)]["Precio"].sum()
+    }
+    for k, v in ingresos_totales.items():
         st.markdown(f"""
-        <div style='flex: 1; min-width: 250px; background-color: #ffffff10; margin: 10px; padding: 20px; border-radius: 12px; text-align: center;'>
-            <h5 style='color: #00ffe1; margin-bottom: 8px;'>{title}</h5>
-            <h2 style='color: white; font-weight: bold;'>${value:,.2f} AUD</h2>
+        <div class='kpi-card'>
+            <div class='kpi-title'>Total últimos {k}</div>
+            <div class='kpi-value'>${v:,.2f} AUD</div>
         </div>
         """, unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        kpi_card("Precio medio por noche", precio_medio_noche)
-    with col2:
-        kpi_card("Precio medio por semana", precio_medio_semana)
-    with col3:
-        kpi_card("Precio medio por mes", precio_medio_mes)
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown("### Ingresos por Tipo de Habitación")
+    periodos = {
+        "Semana": hoy - pd.Timedelta(days=7),
+        "Mes": hoy - pd.DateOffset(months=1),
+        "6 Meses": hoy - pd.DateOffset(months=6),
+        "Año": hoy - pd.DateOffset(years=1)
+    }
+    for tipo in df["Habitación"].unique():
+        with st.expander(f"{tipo.capitalize()}"):
+            for nombre, desde in periodos.items():
+                total = df[(df["Habitación"] == tipo) & (df["Check-in"] >= desde)]["Precio"].sum()
+                st.markdown(f"""
+                <div class='kpi-card small'>
+                    <div class='kpi-title'>Últimos {nombre}</div>
+                    <div class='kpi-value'>${total:,.2f} AUD</div>
+                </div>
+                """, unsafe_allow_html=True)
 
-    col4, col5, col6, col7 = st.columns(4)
-    with col4:
-        kpi_card("Ingreso última semana", ingreso_total_semana)
-    with col5:
-        kpi_card("Ingreso último mes", ingreso_total_mes)
-    with col6:
-        kpi_card("Ingreso últimos 6 meses", ingreso_total_6m)
-    with col7:
-        kpi_card("Ingreso último año", ingreso_total_anual)
+    st.markdown("<hr>", unsafe_allow_html=True)
+    st.markdown("### Ingresos Medios")
+    dias = (df["Check-in"].max() - df["Check-in"].min()).days or 1
+    ingreso_diario = df["Precio"].sum() / dias
+    ingreso_semanal_medio = ingreso_diario * 7
+    ingreso_mensual_medio = ingreso_diario * 30
+    medios = {
+        "Diario": ingreso_diario,
+        "Semanal": ingreso_semanal_medio,
+        "Mensual": ingreso_mensual_medio
+    }
+    for label, val in medios.items():
+        st.markdown(f"""
+        <div class='kpi-card'>
+            <div class='kpi-title'>Ingreso medio {label.lower()}</div>
+            <div class='kpi-value'>${val:,.2f} AUD</div>
+        </div>
+        """, unsafe_allow_html=True)
 
-    st.markdown("</div>", unsafe_allow_html=True)
+# ---------- BLOQUE DERECHO (GRÁFICOS) ---------- #
+with col_der:
+    with st.container():
+        st.markdown("### Ingresos por Habitación (Gráfico)")
+        df_chart = (
+            df[df["Check-in"] >= hoy - pd.DateOffset(months=6)]
+            .groupby("Habitación")["Precio"]
+            .sum()
+            .reset_index()
+        )
+        bar = alt.Chart(df_chart).mark_bar(cornerRadiusTopLeft=4, cornerRadiusTopRight=4).encode(
+            x=alt.X('Precio:Q', title='Ingresos (AUD)'),
+            y=alt.Y('Habitación:N', sort='-x'),
+            color=alt.value("#00c4b3")
+        ).properties(height=250)
+        st.altair_chart(bar, use_container_width=True)
+
+        st.markdown("### Evolución Mensual (Ingresos Totales)")
+        df_mes = df.copy()
+        df_mes["Mes"] = df_mes["Check-in"].dt.to_period("M").astype(str)
+        df_grouped = df_mes.groupby("Mes")["Precio"].sum().reset_index()
+        line = alt.Chart(df_grouped).mark_line().encode(
+            x="Mes",
+            y="Precio"
+        ).properties(height=200)
+        st.altair_chart(line, use_container_width=True)
+
+        st.markdown("### Comparativa de Ingresos Medios")
+        df_medios = pd.DataFrame({
+            "Periodo": ["Diario", "Semanal", "Mensual"],
+            "Ingreso": [ingreso_diario, ingreso_semanal_medio, ingreso_mensual_medio]
+        })
+        comp = alt.Chart(df_medios).mark_bar().encode(
+            x="Periodo",
+            y="Ingreso",
+            color=alt.value("#00c4b3")
+        ).properties(height=200)
+        st.altair_chart(comp, use_container_width=True)
+
+
+
 
 
 # ----------- GRÁFICO ULTRA PREMIUM DE INGRESOS ----------- #
@@ -407,6 +526,9 @@ elif periodo == "Últimos 6 meses":
 elif periodo == "Último año":
     df_filtrado = df[df["Check-in"] >= pd.to_datetime(hoy) - pd.DateOffset(years=1)]
     agrupacion = "M"  # Mes
+
+
+
 
 # Agrupar por el periodo seleccionado
 if not df_filtrado.empty:
