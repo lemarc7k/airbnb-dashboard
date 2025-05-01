@@ -11,6 +11,7 @@ from firebase_config import db
 
 
 
+
 st.set_page_config(page_title="Real Estate | KM Ventures", layout="wide")
 
 
@@ -19,6 +20,8 @@ if "real_estate_page" not in st.session_state:
 
 def go_to(page):
     st.session_state.real_estate_page = page
+
+
 
 # ------------------- FUNCIONES GENERALES -------------------
 def obtener_datos_bookings():
@@ -47,6 +50,8 @@ anio_actual = hoy.year
 mes_actual = pd.to_datetime(hoy).to_period("M").to_timestamp()
 meses_completos = pd.date_range(start=f"{anio_actual}-01-01", end=f"{anio_actual}-12-01", freq="MS")
 df_meses = pd.DataFrame({"Mes": meses_completos})
+
+
 
 
 #.-------------STYLE CSS--------------
@@ -339,6 +344,68 @@ if st.session_state.real_estate_page == "home":
         """, unsafe_allow_html=True)
 
     st.markdown("<hr style='margin-top:30px;'>", unsafe_allow_html=True)
+
+# ------------------- NUEVO MENÚ DE NAVEGACIÓN RESPONSIVE ------------------- #
+st.markdown("""
+    <style>
+        .custom-navbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            padding: 25px 20px;
+            background: black;  /* Puedes ajustar opacidad */
+            border-radius: 12px;
+            margin-bottom: 40px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+            transition: background 0.3s ease;
+        }
+
+        .nav-link {
+            font-family: 'Segoe UI', sans-serif;
+            font-weight: 600;
+            font-size: 16px;
+            padding: 10px 22px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #00c4b3, #00ffe1);
+            color: white !important;
+            text-decoration: none;
+            white-space: nowrap;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .nav-link:hover {
+            background: linear-gradient(135deg, #009e8d, #00c4b3);
+            transform: scale(1.05);
+        }
+
+        @media screen and (max-width: 768px) {
+            .custom-navbar {
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+            }
+            .nav-link {
+                font-size: 15px;
+                padding: 12px 20px;
+                width: 100%;
+                max-width: 320px;
+                text-align: center;
+            }
+        }
+    </style>
+
+    <div class="custom-navbar">
+        <a class="nav-link" href="/Registrar_Reserva" target="_self">Registrar Reserva</a>
+        <a class="nav-link" href="/Calendar" target="_self">Calendario</a>
+        <a class="nav-link" href="/Add_Gastos_Firestore" target="_self">Gastos</a>
+        <a class="nav-link" href="/Inventory" target="_self">Inventario</a>
+        <a class="nav-link" href="/Incidents" target="_self">Incidencias</a>
+        <a class="nav-link" href="/Reports" target="_self">Reportes</a>
+    </div>
+""", unsafe_allow_html=True)
+
 
 # ----------- RESUMEN EJECUTIVO ----------- #
 st.markdown("### 📊 Resumen Ejecutivo")
