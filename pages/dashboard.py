@@ -1,4 +1,5 @@
 import streamlit as st
+st.set_page_config(page_title="dashboard | KM Ventures", layout="wide")
 import pandas as pd
 import datetime
 import altair as alt

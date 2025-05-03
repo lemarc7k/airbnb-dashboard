@@ -1,4 +1,5 @@
-import streamlit as st
+from base_layout import *
+st.set_page_config(page_title="Registrar_Reserva | KM Ventures", layout="wide")
 import pandas as pd
 import datetime
 from firebase_config import db

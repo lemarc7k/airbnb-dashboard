@@ -1,10 +1,25 @@
 import streamlit as st
-from streamlit_extras.switch_page_button import switch_page
-
 st.set_page_config(page_title="Dashboard KM Ventures", layout="wide")
 
+from auth import login  # ⬅️ después del set_page_config
+login()  # ⬅️ ejecuta el login justo después de importarlo
+
+# Resto de imports y código
+from streamlit_extras.switch_page_button import switch_page
+import hashlib
+import os
+import pandas as pd
+import datetime
+import altair as alt
+import streamlit.components.v1 as components
+from firebase_config import db
+
+# -------- CONTENIDO -------- #
 st.title("Airbnb Property Management Dashboard")
 st.write("Bienvenido al panel de control de propiedades Airbnb. Usa el menú para navegar por los módulos.")
+
+
+
 
 # Ejemplo: Redirección si haces clic
 if st.button("Ir a Real Estate"):

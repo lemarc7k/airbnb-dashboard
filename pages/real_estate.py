@@ -1,5 +1,10 @@
 # ------------------- IMPORTS -------------------
-import streamlit as st
+from base_layout import *
+st.set_page_config(page_title="Real Estate | KM Ventures", layout="wide")
+
+# from auth import login
+# login()
+
 from streamlit_extras.switch_page_button import switch_page
 import sys
 import os
@@ -12,7 +17,9 @@ from firebase_config import db
 
 
 
-st.set_page_config(page_title="Real Estate | KM Ventures", layout="wide")
+
+
+
 
 
 if "real_estate_page" not in st.session_state:
@@ -344,6 +351,8 @@ if st.session_state.real_estate_page == "home":
         """, unsafe_allow_html=True)
 
     st.markdown("<hr style='margin-top:30px;'>", unsafe_allow_html=True)
+
+
 
 # ------------------- NUEVO MENÚ DE NAVEGACIÓN RESPONSIVE ------------------- #
 st.markdown("""
