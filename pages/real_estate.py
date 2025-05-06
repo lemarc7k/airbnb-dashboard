@@ -263,19 +263,7 @@ else:
     </div>
     """, unsafe_allow_html=True)
 
-# === INSIGHT: Día con menor ocupación ===
-ocupacion_por_dia = df_ocupacion.copy()
-ocupacion_por_dia["DíaSemana"] = ocupacion_por_dia["Día"].dt.strftime('%A')
-grupo_dia = ocupacion_por_dia.groupby("DíaSemana")["Estado"].apply(lambda x: (x == "Ocupado").mean())
-peor_dia = grupo_dia.idxmin()
-porcentaje_peor = grupo_dia.min()
 
-st.markdown(f"""
-<div style="background-color:#fef9c3; color:#111827; padding:15px; border-radius:12px; margin-top:10px;">
-    <b>📅 Día con menor demanda:</b> {peor_dia} ({porcentaje_peor:.0%})<br>
-    Ideal para promociones o ajustes dinámicos.
-</div>
-""", unsafe_allow_html=True)
 
 # === INSIGHT: Días consecutivos sin reservas ===
 dias_disponibles = df_ocupacion[df_ocupacion["Estado"] == "Disponible"]["Día"].drop_duplicates().sort_values()
