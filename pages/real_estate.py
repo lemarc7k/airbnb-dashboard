@@ -203,38 +203,7 @@ st.altair_chart(heatmap, use_container_width=True)
 
 
 
-# === RECOMENDACIÓN AI: Martes ===
-martes = [d for d in dias_mes if d.weekday() == 1]
-ocupacion_martes = df_ocupacion[df_ocupacion["Día"].isin(martes)]
-ocupacion_baja = (ocupacion_martes["Estado"] == "Ocupado").mean()
 
-st.markdown("### 🧠 Recomendación AI")
-
-if ocupacion_baja < 0.4:
-    st.markdown(f"""
-    <div style="background-color:#f1f5f9; padding:15px; border-radius:12px;">
-        <b>Baja el precio los martes</b> (ocupación: <span style='color:#ef4444;'>{ocupacion_baja*100:.0f}%</span>)<br>
-        Considera promociones de mínimo 2 noches.
-    </div>
-    """, unsafe_allow_html=True)
-elif ocupacion_baja < 0.6:
-    st.markdown(f"🧠 Considera descuento leve los martes (ocupación moderada: {ocupacion_baja*100:.0f}%)")
-else:
-    st.markdown("✅ Martes con buena ocupación, mantén tu estrategia actual.")
-
-# === INSIGHT: Día con menor ocupación ===
-ocupacion_por_dia = df_ocupacion.copy()
-ocupacion_por_dia["DíaSemana"] = ocupacion_por_dia["Día"].dt.strftime('%A')
-grupo_dia = ocupacion_por_dia.groupby("DíaSemana")["Estado"].apply(lambda x: (x == "Ocupado").mean())
-peor_dia = grupo_dia.idxmin()
-porcentaje_peor = grupo_dia.min()
-
-st.markdown(f"""
-<div style="background-color:#fef9c3; padding:15px; border-radius:12px; margin-top:10px;">
-    <b>📆 Día con menor demanda:</b> {peor_dia} ({porcentaje_peor:.0%})<br>
-    Ideal para promociones o ajustes dinámicos.
-</div>
-""", unsafe_allow_html=True)
 
 # === RECOMENDACIÓN AI: Martes ===
 martes = [d for d in dias_mes if d.weekday() == 1]
@@ -263,11 +232,27 @@ else:
     </div>
     """, unsafe_allow_html=True)
 
+# === INSIGHT: Día con menor ocupación ===
+ocupacion_por_dia = df_ocupacion.drop_duplicates(subset=["Día", "Habitación"]).copy()
+ocupacion_por_dia["DíaSemana"] = ocupacion_por_dia["Día"].dt.day_name()
+grupo_dia = ocupacion_por_dia.groupby("DíaSemana")["Estado"].apply(lambda x: (x == "Ocupado").mean())
 
+# Ordenar días para visualización coherente (Lunes a Domingo)
+orden_dias = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+grupo_dia = grupo_dia.reindex(orden_dias).dropna()
+
+peor_dia = grupo_dia.idxmin()
+porcentaje_peor = grupo_dia.min()
+
+st.markdown(f"""
+<div style="background-color:#fef9c3; color:#111827; padding:15px; border-radius:12px; margin-top:10px;">
+    <b>📅 Día con menor demanda:</b> {peor_dia} ({porcentaje_peor:.0%})<br>
+    Ideal para promociones o ajustes dinámicos.
+</div>
+""", unsafe_allow_html=True)
 
 # === INSIGHT: Días consecutivos sin reservas ===
-dias_disponibles = df_ocupacion[df_ocupacion["Estado"] == "Disponible"]["Día"].drop_duplicates().sort_values()
-dias_disponibles = dias_disponibles.reset_index(drop=True)
+dias_disponibles = df_ocupacion[df_ocupacion["Estado"] == "Disponible"]["Día"].drop_duplicates().sort_values().reset_index(drop=True)
 
 bloques = []
 bloque = []
