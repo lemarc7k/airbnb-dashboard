@@ -79,3 +79,9 @@ elif st.session_state.real_estate_page == "registrar":
 > ✅ Sistema modular, limpio y escalable para gestionar Real Estate.
 >
 > 📊 Mejora la productividad y facilita nuevas expansiones futuras.
+
+# ACTUALIZAR GITHUB
+
+git add .
+git commit -m "Ultimas actualizaciones"
+git push origin main
