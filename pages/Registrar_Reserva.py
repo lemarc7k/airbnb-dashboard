@@ -60,7 +60,7 @@ if not df.empty and "Check-in" in df.columns and "Check-out" in df.columns:
     df["Estado"] = df.apply(clasificar_estado, axis=1)
 
 # ----------------------- FILTRADO --------------------------- #
-st.subheader("🔍 Filtrado por estado")
+st.subheader("")
 conteos = df["Estado"].value_counts().to_dict() if "Estado" in df.columns else {}
 col1, col2, col3, col4, col5 = st.columns(5)
 with col1: st.button(f"Currently hosting ({conteos.get('Currently hosting', 0)})", key="f1", on_click=lambda: st.session_state.update({"selected_estado": "Currently hosting"}))
@@ -74,13 +74,13 @@ if estado_actual and "Estado" in df.columns and estado_actual in df["Estado"].va
     df_estado = df[df["Estado"] == estado_actual]
     for _, row in df_estado.iterrows():
         st.markdown(f"""
-            <div style='background:#fff;border:1px solid #ccc;border-radius:10px;padding:10px;margin:5px;width:260px;display:inline-block'>
-                <p style='color:crimson;font-weight:bold'>{estado_actual}</p>
-                <p style='margin:0;font-size:18px;font-weight:bold'>{row.get("Huesped", "")}</p>
-                <p style='margin:0'>{row.get("Check-in", ""):%d %b} - {row.get("Check-out", ""):%d %b}</p>
-                <p style='margin:0'>{row.get("Propiedad", "")}</p>
-            </div>
-        """, unsafe_allow_html=True)
+    <div style='background:#fff; color:#000; border:1px solid #ccc; border-radius:10px; padding:10px; margin:5px; width:260px; display:inline-block'>
+        <p style='color:crimson;font-weight:bold'>{estado_actual}</p>
+        <p style='margin:0;font-size:18px;font-weight:bold'>{row.get("Huesped", "")}</p>
+        <p style='margin:0'>{row.get("Check-in", ""):%d %b} - {row.get("Check-out", ""):%d %b}</p>
+        <p style='margin:0'>{row.get("Propiedad", "")}</p>
+    </div>
+""", unsafe_allow_html=True)
 
 # ----------------------- FORMULARIO --------------------------- #
 st.subheader("📝 Añadir o Editar una reserva")

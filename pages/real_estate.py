@@ -120,46 +120,100 @@ chart = alt.Chart(df_ocupacion).mark_bar().encode(
 
 st.altair_chart(chart, use_container_width=True)
 
-# --- KPI POR HABITACIÓN (cards horizontales)
-st.markdown("### 📈 Porcentaje de ocupación por habitación")
-cols = st.columns(len(porcentaje_ocupacion))
-for i, row in porcentaje_ocupacion.iterrows():
-    with cols[i]:
-        st.metric(label=row["Habitación"], value=f"{row['Ocupado (%)']}%")
+# === CALCULAR OCUPACIÓN REAL Y FUTURA ===
+ocupacion_stats["EsOcupado"] = ocupacion_stats["Estado"] == "Ocupado"
+ocupacion_stats["EsFuturo"] = ocupacion_stats["Estado"] == "Futuro"
 
-import altair as alt
+# Total de días por habitación
+dias_totales = ocupacion_stats.groupby("Habitación")["Estado"].count().reset_index(name="TotalDías")
 
-# GRAFICO HORIZONTAL - TOP 3 HABITACIONES
+# Sumar ocupación por tipo
+ocupacion_resumen = ocupacion_stats.groupby("Habitación")[["EsOcupado", "EsFuturo"]].sum().reset_index()
+ocupacion_resumen = ocupacion_resumen.merge(dias_totales, on="Habitación")
+ocupacion_resumen["Disponible"] = ocupacion_resumen["TotalDías"] - ocupacion_resumen["EsOcupado"] - ocupacion_resumen["EsFuturo"]
 
-# Reordenar y preparar datos
-top3 = porcentaje_ocupacion.sort_values(by="Ocupado (%)", ascending=False).head(3).copy()
-top3["Ocupado (%)"] = top3["Ocupado (%)"].round(1)  # Redondear si quieres
-bar_colors = ['#facc15', '#cbd5e1', '#eab308']
-top3["Color"] = bar_colors[:len(top3)]
+# Calcular porcentajes
+ocupacion_resumen["Ocupado (%)"] = (ocupacion_resumen["EsOcupado"] / ocupacion_resumen["TotalDías"] * 100).round(1)
+ocupacion_resumen["Futuro (%)"] = (ocupacion_resumen["EsFuturo"] / ocupacion_resumen["TotalDías"] * 100).round(1)
+ocupacion_resumen["Disponible (%)"] = 100 - ocupacion_resumen["Ocupado (%)"] - ocupacion_resumen["Futuro (%)"]
+ocupacion_resumen["OcupadoFuturo (%)"] = ocupacion_resumen["Ocupado (%)"] + ocupacion_resumen["Futuro (%)"]
 
-# Fondo de barras al 100%
-background = alt.Chart(top3).mark_bar(size=30, color="#e5e7eb").encode(
-    x=alt.X("xmax:Q", scale=alt.Scale(domain=[0, 100])),
-    y=alt.Y("Habitación:N", sort="-x")
-).transform_calculate(
-    xmax="100"
-)
+# Clasificación y recomendación
+def clasificar_estado(p):
+    if p < 50:
+        return "🔴 Bajo", "📉 Lanzar promoción urgente"
+    elif p < 70:
+        return "🟡 Aceptable", "📊 Considera ajustar precio"
+    else:
+        return "🟢 Excelente", "✅ Mantén estrategia"
 
-# Barra con ocupación real
-foreground = alt.Chart(top3).mark_bar(size=30).encode(
-    x=alt.X("Ocupado (%):Q", title="Porcentaje de Ocupación", scale=alt.Scale(domain=[0, 100])),
+estado_info = ocupacion_resumen["OcupadoFuturo (%)"].apply(clasificar_estado)
+ocupacion_resumen["Estado general"] = estado_info.apply(lambda x: x[0])
+ocupacion_resumen["Recomendación"] = estado_info.apply(lambda x: x[1])
+
+# === MÉTRICAS HORIZONTALES DISEÑADAS ===
+st.markdown("### 📈 Ocupación por habitación (real + proyectada)")
+
+st.markdown("<div style='display: flex; gap: 30px; flex-wrap: wrap;'>", unsafe_allow_html=True)
+
+for _, row in ocupacion_resumen.iterrows():
+    color = "#10b981" if "🟢" in row["Estado general"] else "#facc15" if "🟡" in row["Estado general"] else "#ef4444"
+    st.markdown(f"""
+    <div style='
+        flex: 1;
+        min-width: 250px;
+        background-color: #1f2937;
+        border-radius: 12px;
+        padding: 16px 24px;
+        color: white;
+        box-shadow: 0 0 8px rgba(0,0,0,0.2);
+    '>
+        <div style='font-size: 18px; font-weight: bold; margin-bottom: 8px;'>{row['Habitación']}</div>
+        <div style='font-size: 32px; font-weight: bold; color: {color};'>{row['OcupadoFuturo (%)']}%</div>
+        <div style='margin-top: 6px; font-size: 15px;'>{row['Estado general']}</div>
+        <div style='font-size: 13px; color: #cbd5e1; margin-top: 4px;'>{row['Recomendación']}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+# === GRAFICO DE OCUPACIÓN APILADA ===
+st.markdown("### 📊 Gráfico de ocupación real vs. futura")
+
+df_long = ocupacion_resumen.melt(id_vars="Habitación",
+                                  value_vars=["Ocupado (%)", "Futuro (%)"],
+                                  var_name="Tipo", value_name="Porcentaje")
+
+color_map = {
+    "Ocupado (%)": "#10b981",  # verde
+    "Futuro (%)": "#3b82f6"    # azul
+}
+
+chart = alt.Chart(df_long).mark_bar(size=30).encode(
+    x=alt.X("Porcentaje:Q", stack="zero", title="Ocupación (%)", scale=alt.Scale(domain=[0, 100])),
     y=alt.Y("Habitación:N", sort="-x"),
-    color=alt.Color("Color:N", scale=None, legend=None),
-    tooltip=["Habitación", "Ocupado (%)"]
-)
+    color=alt.Color("Tipo:N", scale=alt.Scale(domain=list(color_map.keys()), range=list(color_map.values())),
+                    legend=alt.Legend(title="Tipo de ocupación")),
+    tooltip=["Habitación", "Tipo", "Porcentaje"]
+).properties(height=240)
 
-# Superponer las capas
-chart = background + foreground
-chart = chart.properties(height=200)
-
-st.markdown("### ")
 st.altair_chart(chart, use_container_width=True)
 
+# === TABLA DETALLADA ===
+st.markdown("### 📋 Detalle completo por habitación")
+df_tabla = ocupacion_resumen[[
+    "Habitación", "EsOcupado", "EsFuturo", "Disponible", "TotalDías",
+    "Ocupado (%)", "Futuro (%)", "OcupadoFuturo (%)", "Estado general", "Recomendación"
+]]
+df_tabla.columns = [
+    "Habitación", "Noches Ocupadas", "Noches Futuras", "Disponibles", "Total Días",
+    "% Ocupado", "% Futuro", "% Total", "Estado", "Recomendación"
+]
+
+try:
+    tools.display_dataframe_to_user("Detalle de Ocupación", df_tabla)
+except:
+    st.dataframe(df_tabla, use_container_width=True)
 
 # CALENDARIO DE DISPONIBILIDAD - HEATMAP
 # === Preparar días del mes actual ===

@@ -1,5 +1,5 @@
 import streamlit as st
-st.set_page_config(page_title="Real Estate | KM Ventures", layout="wide")
+st.set_page_config(page_title="Reports | KM Ventures", layout="wide")
 import pandas as pd
 import altair as alt
 from firebase_admin import firestore

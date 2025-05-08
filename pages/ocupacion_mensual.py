@@ -62,7 +62,7 @@ st.dataframe(ocupacion, use_container_width=True)
 import plotly.express as px
 
 # ------------ GRÁFICO DE OCUPACIÓN % POR HABITACIÓN ------------
-st.subheader("📈 Porcentaje de Ocupación por Habitación (Gráfico)")
+st.subheader("📈 Tasa de ocupación por habitación")
 
 fig1 = px.bar(
     ocupacion,
@@ -82,7 +82,7 @@ fig1.update_layout(
 st.plotly_chart(fig1, use_container_width=True)
 
 # ------------ GRÁFICO DE DÍAS OCUPADOS VS DISPONIBLES ------------
-st.subheader("📊 Días Ocupados vs Disponibles (Gráfico)")
+st.subheader("📊 Días Ocupados")
 
 ocupacion_stacked = ocupacion.copy()
 ocupacion_stacked["label"] = ocupacion_stacked["Habitación"]
