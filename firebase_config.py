@@ -22,3 +22,6 @@ def initialize_firebase():
 
 # ✅ Usa el cliente desde la función cacheada
 db = initialize_firebase()
+
+# 👇 ESTA LÍNEA ES CLAVE
+db = initialize_firebase()
