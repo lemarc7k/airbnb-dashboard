@@ -9,6 +9,7 @@ from datetime import datetime as dt
 
 
 
+
 # === LIBRERÍAS DE VISUALIZACIÓN ===
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -232,6 +233,157 @@ with tabs[0]:
                     estado = "Ocupado" if dia <= hoy else "Futuro"
                     data.append({"Habitación": row["Habitación"], "Día": dia, "Estado": estado})
         return pd.DataFrame(data)
+    
+
+    ####### GRAFICO DE OCUPACION
+
+    # Convertir fechas y preparar datos
+    df["Check-in"] = pd.to_datetime(df["Check-in"], errors="coerce")
+    df["Check-out"] = pd.to_datetime(df["Check-out"], errors="coerce")
+    df_validas = df.dropna(subset=["Check-in", "Check-out"]).copy()
+    df_validas["Habitación"] = df_validas["Habitación"].fillna("Desconocida")
+
+    # Fechas del mes actual
+    hoy = pd.to_datetime(dt.today().date())
+    fecha_inicio = pd.to_datetime(datetime(hoy.year, hoy.month, 1))
+    fecha_fin = fecha_inicio + pd.offsets.MonthEnd(0)
+    dias_mes = pd.date_range(fecha_inicio, fecha_fin, freq='D')
+
+    # Habitaciones únicas
+    habitaciones = df_validas["Habitación"].unique()
+
+    # Dataset por día y habitación
+    data_ocupacion = []
+    for habitacion in habitaciones:
+        reservas = df_validas[df_validas["Habitación"] == habitacion]
+        for dia in dias_mes:
+            estado = "Disponible"
+            for _, row in reservas.iterrows():
+                if row["Check-in"] <= dia <= row["Check-out"]:
+                    estado = "Futuro" if row["Check-in"].date() > hoy.date() else "Ocupado"
+                    break
+            data_ocupacion.append({"Habitación": habitacion, "Día": dia, "Estado": estado})
+
+    df_ocupacion = pd.DataFrame(data_ocupacion)
+
+    # Porcentaje ocupación por habitación
+    ocupacion_stats = df_ocupacion.copy()
+    ocupacion_stats["Ocupado"] = ocupacion_stats["Estado"] == "Ocupado"
+    porcentaje_ocupacion = ocupacion_stats.groupby("Habitación")["Ocupado"].mean().reset_index()
+    porcentaje_ocupacion["Ocupado (%)"] = (porcentaje_ocupacion["Ocupado"] * 100).round(0).astype(int)
+    df_ocupacion = df_ocupacion.merge(porcentaje_ocupacion, on="Habitación")
+
+    # Colores personalizados
+    colores = alt.Scale(domain=["Ocupado", "Futuro", "Disponible"],
+                        range=["#10b981", "#3b82f6", "#d1d5db"])
+
+
+
+    # === CALCULAR OCUPACIÓN RESUMIDA ===
+    ocupacion_stats["EsOcupado"] = ocupacion_stats["Estado"] == "Ocupado"
+    ocupacion_stats["EsFuturo"] = ocupacion_stats["Estado"] == "Futuro"
+
+    dias_totales = ocupacion_stats.groupby("Habitación")["Estado"].count().reset_index(name="TotalDías")
+    ocupacion_resumen = ocupacion_stats.groupby("Habitación")[["EsOcupado", "EsFuturo"]].sum().reset_index()
+    ocupacion_resumen = ocupacion_resumen.merge(dias_totales, on="Habitación")
+    ocupacion_resumen["Disponible"] = ocupacion_resumen["TotalDías"] - ocupacion_resumen["EsOcupado"] - ocupacion_resumen["EsFuturo"]
+
+    ocupacion_resumen["Ocupado (%)"] = (ocupacion_resumen["EsOcupado"] / ocupacion_resumen["TotalDías"] * 100)
+    ocupacion_resumen["Futuro (%)"] = (ocupacion_resumen["EsFuturo"] / ocupacion_resumen["TotalDías"] * 100)
+    ocupacion_resumen["OcupadoFuturo (%)"] = ocupacion_resumen["Ocupado (%)"] + ocupacion_resumen["Futuro (%)"]
+
+    # Clasificación visual y recomendaciones
+    def clasificar_estado(p):
+        if p < 50:
+            return "🔴 Bajo", "📉 Lanzar promoción urgente"
+        elif p < 70:
+            return "🟡 Aceptable", "📊 Considera ajustar precio"
+        else:
+            return "🟢 Excelente", "✅ Mantén estrategia"
+
+    estado_info = ocupacion_resumen["OcupadoFuturo (%)"].apply(clasificar_estado)
+    ocupacion_resumen["Estado general"] = estado_info.apply(lambda x: x[0])
+    ocupacion_resumen["Recomendación"] = estado_info.apply(lambda x: x[1])
+
+
+
+    # === TABLA DETALLADA (MODO OSCURO SIN iframe) ===
+    import streamlit.components.v1 as components
+
+    # === FUNCIÓN FLEXIBLE PARA TÍTULOS DE SECCIÓN ===
+    def mostrar_titulo(seccion, color="#00ffe1", size="26px", margin_top="30px", margin_bottom="15px"):
+        st.markdown(f"""
+        <div style="
+            font-size: {size};
+            color: {color};
+            margin: {margin_top} 0 {margin_bottom} 0;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        ">
+            {seccion}
+        </div>
+        """, unsafe_allow_html=True)
+
+    # === TABLA DETALLADA CON HTML Y CSS FUNCIONANDO ===
+
+    from datetime import datetime
+
+    # Obtener el nombre del mes actual en inglés
+    hoy = datetime.today()
+    mes_actual_nombre = hoy.strftime("%B")  # Ej: "May"
+    mostrar_titulo(f"Ocupación mensual - {mes_actual_nombre}")
+
+
+    df_tabla = ocupacion_resumen[[ 
+        "Habitación", "EsOcupado", "EsFuturo", "Disponible", "TotalDías",
+        "Ocupado (%)", "Futuro (%)", "OcupadoFuturo (%)", "Estado general", "Recomendación"
+    ]]
+    df_tabla.columns = [
+        "Habitación", "Noches Ocupadas", "Noches Futuras", "Disponibles", "Total Días",
+        "% Ocupado", "% Futuro", "% Total", "Estado", "Recomendación"
+    ]
+
+    # Redondear columnas de porcentaje a 2 decimales
+    df_tabla["% Ocupado"] = df_tabla["% Ocupado"].round(2)
+    df_tabla["% Futuro"] = df_tabla["% Futuro"].round(2)
+    df_tabla["% Total"] = df_tabla["% Total"].round(2)
+
+
+    html_table = df_tabla.to_html(index=False, classes="dark-table", border=0)
+
+    html_render = f"""
+    <style>
+    .dark-table {{
+        width: 100%;
+        border-collapse: collapse;
+        background-color: #111827;
+        color: #ccc;
+        font-family: 'Segoe UI', sans-serif;
+        font-size: 14px;
+    }}
+    .dark-table th {{
+        background-color: #1e1e21;
+        color: #00ffe1;
+        padding: 10px;
+        text-align: center;
+        border-bottom: 1px solid #333;
+    }}
+    .dark-table td {{
+        padding: 8px;
+        text-align: center;
+        border-bottom: 1px solid #222;
+    }}
+    </style>
+    <div style="background-color:#0f1115; padding: 15px 25px; border-radius: 14px; box-shadow: 0 0 20px #00ffe120; overflow-x: auto;">
+        {html_table}
+    </div>
+    """
+
+    # Renderizado real del HTML (no como markdown)
+    components.html(html_render, height=200, scrolling=True)
+
+
+    ####### FIN GRAFICO DE OCUPACION
 
     # === OCUPACIÓN SEMANAL POR HABITACIÓN (real + futura) ===
     df_ocupacion_dias = calcular_ocupacion_real_futura(df, inicio_semana, fin_semana, hoy)
@@ -375,7 +527,10 @@ with tabs[0]:
         "May": "Mayo", "June": "Junio", "July": "Julio", "August": "Agosto",
         "September": "Septiembre", "October": "Octubre", "November": "Noviembre", "December": "Diciembre"
     }
-    mes_actual_nombre = meses_es[hoy.strftime("%B")]
+
+    hoy = datetime.today()
+    mes_actual_nombre = hoy.strftime("%B").capitalize()  # Ej: 'Mayo'
+
 
     col1, col2, col3 = st.columns(3)
 
@@ -491,8 +646,9 @@ with tabs[0]:
     """, unsafe_allow_html=True)
 
    # === CALCULAR PERIODO DEL MES ===
-    inicio_mes = hoy.to_period("M").start_time
-    fin_mes = hoy.to_period("M").end_time
+    hoy = datetime.today()
+    inicio_mes = pd.Timestamp(hoy).to_period("M").start_time
+    fin_mes = pd.Timestamp(hoy).to_period("M").end_time
     periodo_str_mes = f"{inicio_mes.strftime('%d %b')} – {fin_mes.strftime('%d %b %Y')}".upper()
 
     # === INGRESOS DEL MES ===
@@ -548,7 +704,7 @@ with tabs[0]:
     ingresos_totales = df["Precio"].sum() if "Precio" in df.columns else 0
     habitaciones_activas = df["Habitación"].nunique() if "Habitación" in df.columns else 0
 
-    mes_actual = hoy.to_period("M").to_timestamp()
+    mes_actual = pd.Timestamp(hoy).to_period("M").to_timestamp()
     mes_anterior = (hoy - pd.DateOffset(months=1)).to_period("M").to_timestamp()
 
     ingreso_mes_actual = df[df["Mes"] == mes_actual]["Precio"].sum()
@@ -812,7 +968,8 @@ with tabs[1]:
     st.subheader("Resumen general")
     total = df["Precio"].sum()
     upcoming = df[df["Check-in"] > hoy]["Precio"].sum()
-    ingreso_mes = df[df["Mes"] == hoy.to_period("M").to_timestamp()]["Precio"].sum()
+    mes_actual = pd.Timestamp(hoy).to_period("M").to_timestamp()
+    ingreso_mes = df[df["Mes"] == mes_actual]["Precio"].sum()
 
     st.markdown("""
     <style>
@@ -945,26 +1102,7 @@ with tabs[1]:
     colores = alt.Scale(domain=["Ocupado", "Futuro", "Disponible"],
                         range=["#10b981", "#3b82f6", "#d1d5db"])
 
-    # Gráfico
-    st.subheader("Días ocupados/proyectados/disponibles (mes actual)")
-    chart = alt.Chart(df_ocupacion).mark_bar().encode(
-        x=alt.X("Día:T", title="Días del mes"),
-        y=alt.Y("Habitación:N", title="Habitación", sort="-x"),
-        color=alt.Color("Estado:N", scale=colores, legend=alt.Legend(title="Estado")),
-        tooltip=["Día:T", "Habitación:N", "Estado:N"]
-    ).properties(
-        height=400,
-        background="#0f1115"
-    ).configure_axis(
-        labelColor="#ccc",
-        titleColor="#00ffe1"
-    ).configure_legend(
-        labelColor="#ccc",
-        titleColor="#ccc"
-    )
 
-    chart = chart.configure_view(stroke=None)
-    st.altair_chart(chart, use_container_width=True)
 
     # === CALCULAR OCUPACIÓN RESUMIDA ===
     ocupacion_stats["EsOcupado"] = ocupacion_stats["Estado"] == "Ocupado"
@@ -993,109 +1131,6 @@ with tabs[1]:
     ocupacion_resumen["Recomendación"] = estado_info.apply(lambda x: x[1])
 
 
-    # === MÉTRICAS ESTILO BUSINESS-CARD ===
-
-    # === CSS Y ESTILO PARA TARJETAS DE OCUPACIÓN ===
-    st.markdown("""
-    <style>
-    .ocupacion-container {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 20px;
-        margin-top: 20px;
-    }
-    .ocupacion-card-block {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        min-width: 160px;
-        flex: 1 1 180px;
-    }
-    .ocupacion-title {
-        font-size: 13px;
-        color: #d1d5db;
-        font-family: 'Segoe UI', 'Inter', sans-serif;
-        margin-bottom: 6px;
-        text-align: center;
-        font-weight: 600;
-    }
-    .ocupacion-card {
-        background: linear-gradient(to bottom right, #1e1e21, #29292e);
-        padding: 16px 20px;
-        border-radius: 14px;
-        text-align: center;
-        font-family: 'Segoe UI', 'Inter', sans-serif;
-        box-shadow: 0 0 8px rgba(0,0,0,0.2);
-        transition: transform 0.2s ease;
-        width: 100%;
-        max-width: 220px;
-    }
-    .ocupacion-card:hover {
-        transform: scale(1.03);
-        box-shadow: 0 0 14px #00ffe1;
-    }
-    .ocupacion-valor {
-        font-size: 24px;
-        font-weight: bold;
-        color: white;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-
-    #CONSTRUCCION DE TARJETAS
-
-    st.markdown("### NIVEL DE OCUPACIÓN")
-
-    st.markdown("<div class='ocupacion-container'>", unsafe_allow_html=True)
-
-    for _, row in ocupacion_resumen.iterrows():
-        porcentaje = round(row["OcupadoFuturo (%)"], 1)
-        st.markdown(f"""
-            <div class='ocupacion-card-block'>
-                <div class='ocupacion-title'>{row["Habitación"]}</div>
-                <div class='ocupacion-card'>
-                    <div class='ocupacion-valor'>{porcentaje}%</div>
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
-    st.markdown("</div>", unsafe_allow_html=True)
-
-
-    # === GRAFICO DE OCUPACIÓN APILADA ===
-    st.markdown("### OCUPACIÓN REAL / FUTURA")
-
-    df_long = ocupacion_resumen.melt(id_vars="Habitación",
-                                    value_vars=["Ocupado (%)", "Futuro (%)"],
-                                    var_name="Tipo", value_name="Porcentaje")
-
-    color_map = {
-        "Ocupado (%)": "#10b981",  # verde
-        "Futuro (%)": "#3b82f6"    # azul
-    }
-
-    chart = alt.Chart(df_long).mark_bar(size=30).encode(
-    x=alt.X("Porcentaje:Q", stack="zero", title="Ocupación (%)", scale=alt.Scale(domain=[0, 100])),
-    y=alt.Y("Habitación:N", sort="-x"),
-    color=alt.Color("Tipo:N",
-                    scale=alt.Scale(domain=list(color_map.keys()), range=list(color_map.values())),
-                    legend=alt.Legend(title="Tipo de ocupación")),
-    tooltip=["Habitación", "Tipo", "Porcentaje"]
-    ).properties(
-        height=240,
-        background="#0f1115"
-    ).configure_axis(
-        labelColor="#ccc",
-        titleColor="#00ffe1"
-    ).configure_legend(
-        labelColor="#ccc",
-        titleColor="#ccc"
-    )
-
-    chart = chart.configure_view(stroke=None)
-    st.altair_chart(chart, use_container_width=True)
 
     # === TABLA DETALLADA (MODO OSCURO SIN iframe) ===
     import streamlit.components.v1 as components
@@ -1151,69 +1186,6 @@ with tabs[1]:
     # Renderizado real del HTML (no como markdown)
     components.html(html_render, height=200, scrolling=True)
 
-
-
-    # === CALENDARIO DE DISPONIBILIDAD - COMPLETO ===
-    from datetime import datetime
-
-    # Preparar días del mes actual
-    hoy = pd.to_datetime(datetime.today().date())
-    fecha_inicio = pd.to_datetime(datetime(hoy.year, hoy.month, 1))
-    fecha_fin = fecha_inicio + pd.offsets.MonthEnd(0)
-    dias_mes = pd.date_range(fecha_inicio, fecha_fin, freq='D')
-
-    # Días sin reservas (usa df_ocupacion ya definido)
-    dias_vacios = df_ocupacion.groupby("Día")["Estado"].apply(lambda x: all(s == "Disponible" for s in x))
-    dias_vacios = dias_vacios[dias_vacios].index
-
-    # Construir DataFrame calendario
-    df_cal = pd.DataFrame({
-        "Día": dias_mes,
-        "Ocupado": [not d in dias_vacios for d in dias_mes],
-        "Semana": [d.isocalendar()[1] for d in dias_mes],
-        "Día_nombre": [d.strftime('%A') for d in dias_mes]
-    })
-
-    # Traducir estado
-    df_cal["Estado"] = df_cal["Ocupado"].replace({True: "Ocupado", False: "Vacío"})
-
-    # Ordenar días (Lunes a Domingo)
-    orden_dias = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    df_cal["Día_nombre"] = pd.Categorical(df_cal["Día_nombre"], categories=orden_dias, ordered=True)
-
-    # === Mostrar Heatmap elegante ===
-    st.markdown("### 📅 Calendario de disponibilidad")
-
-    heatmap = alt.Chart(df_cal).mark_rect(
-        cornerRadius=6,
-        stroke='rgba(255,255,255,0.1)',
-        strokeWidth=0.4
-    ).encode(
-        x=alt.X("Día_nombre:N", title="Día de la semana", sort=orden_dias),
-        y=alt.Y("Semana:O", title="Semana del mes"),
-        color=alt.Color("Estado:N",
-            scale=alt.Scale(domain=["Ocupado", "Vacío"], range=["#10b981", "#ef4444"]),
-            legend=alt.Legend(title="Estado de ocupación")
-        ),
-        tooltip=[
-            alt.Tooltip("Día:T", title="Fecha exacta"),
-            alt.Tooltip("Estado:N", title="Estado del día")
-        ]
-    ).properties(
-        height=280,
-        background="#0f1115"
-    ).configure_axis(
-        labelFontSize=12,
-        titleFontSize=14,
-        labelColor="#ccc",
-        titleColor="#00ffe1"
-    ).configure_legend(
-        labelColor="#ccc",
-        titleColor="#ccc"
-    )
-
-    heatmap = heatmap.configure_view(stroke=None)
-    st.altair_chart(heatmap, use_container_width=True)
 
 
 
@@ -1303,6 +1275,16 @@ with tabs[2]:
     
     
     from datetime import datetime
+    from firebase_config import db
+
+    @st.cache_data
+    def cargar_bookings():
+        docs = db.collection("bookings").stream()
+        data = [doc.to_dict() for doc in docs]
+        return pd.DataFrame(data)
+
+    df = cargar_bookings()
+
 
     # === DATOS ===
     df["Check-in"] = pd.to_datetime(df["Check-in"], errors="coerce")
@@ -1317,35 +1299,9 @@ with tabs[2]:
     if "reserva_seleccionada" not in st.session_state:
         st.session_state["reserva_seleccionada"] = None
 
-    # === ESTILOS ===
+    # === ESTILOS BASE ===
     st.markdown("""
     <style>
-    .card-reserva {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background-color: #111827;
-        padding: 16px;
-        margin: 10px 0;
-        border-radius: 12px;
-        border: 1px solid #00ffe180;
-        box-shadow: 0 0 10px #00ffe120;
-        cursor: pointer;
-    }
-    .card-left {
-        display: flex;
-        flex-direction: column;
-        color: white;
-    }
-    .card-title {
-        font-weight: 600;
-        font-size: 16px;
-        color: #00ffe1;
-    }
-    .card-subtitle {
-        font-size: 13px;
-        color: #aaa;
-    }
     .card-avatar {
         width: 45px;
         height: 45px;
@@ -1361,71 +1317,111 @@ with tabs[2]:
     </style>
     """, unsafe_allow_html=True)
 
-    # === COLUMNAS: IZQUIERDA RESERVAS / DERECHA DETALLES ===
-    col_izq, col_der = st.columns([1.4, 2])
+    # === FUNCIÓN PARA TÍTULOS DE SECCIÓN ===
+    # === FUNCIÓN FLEXIBLE PARA TÍTULOS DE SECCIÓN ===
+    def mostrar_titulo(seccion, color="#00ffe1", size="26px", margin_top="30px", margin_bottom="15px"):
+        st.markdown(f"""
+        <div style="
+            font-size: {size};
+            color: {color};
+            margin: {margin_top} 0 {margin_bottom} 0;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        ">
+            {seccion}
+        </div>
+        """, unsafe_allow_html=True)
 
-    with col_izq:
-        st.markdown("<div class='section-title'>Hoy</div>", unsafe_allow_html=True)
 
-        for _, row in checkouts_hoy.iterrows():
-            if st.button(f"{row['Huesped']} ⮕ checkout", key=f"out-{row['Huesped']}-{row['Check-in']}"):
-                st.session_state["reserva_seleccionada"] = row.to_dict()
 
-        for _, row in checkins_hoy.iterrows():
-            if st.button(f"{row['Huesped']} ⮕ check-in", key=f"in-{row['Huesped']}-{row['Check-in']}"):
-                st.session_state["reserva_seleccionada"] = row.to_dict()
-
-        st.markdown("<div class='section-title'>Upcoming</div>", unsafe_allow_html=True)
-
-        for _, row in upcoming.iterrows():
-            label = f"{row['Check-in'].strftime('%d-%b')} → {row['Check-out'].strftime('%d %b')} · {row['Huesped']}"
-            if st.button(label, key=f"upcoming-{row['Huesped']}-{row['Check-in']}"):
-                st.session_state["reserva_seleccionada"] = row.to_dict()
-
-    with col_der:
-        reserva = st.session_state["reserva_seleccionada"]
-        if reserva:
-            avatar = f"https://i.pravatar.cc/150?u={reserva['Huesped']}"
+    # === FUNCIÓN PARA TARJETAS EXPANDIBLES ===
+    def mostrar_tarjeta_reserva(titulo, subtitulo, avatar_url, key, reserva_dict):
+        with st.container():
             st.markdown(f"""
-            <div style="background-color:#111827; padding:25px; border-radius:14px; border:1px solid #00ffe120; box-shadow:0 0 15px #00ffe130;">
-                <div style="display:flex; align-items:center; gap:15px;">
-                    <img src="{avatar}" class="card-avatar" />
-                    <h3 style="color:#00ffe1; margin:0;">{reserva['Huesped']}</h3>
+            <div style="background-color:#0f172a; padding:15px 18px; border-radius:16px;
+                        border:1px solid #00ffe120; box-shadow:0 0 8px #00ffe110; margin-bottom:5px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="color:white;">
+                        <div style="font-size:15px; font-weight:600; color:#00ffe1;">{titulo}</div>
+                        <div style="font-size:13px; color:#aaa;">{subtitulo}</div>
+                    </div>
+                    <img src="{avatar_url}" class="card-avatar" />
                 </div>
-                <hr style="border:1px solid #00ffe140; margin:15px 0;">
-                <p><b>Propiedad:</b> {reserva['Propiedad']}</p>
-                <p><b>Habitación:</b> {reserva['Habitación']}</p>
-                <p><b>Check-in:</b> {pd.to_datetime(reserva['Check-in']).strftime('%d %b %Y')}</p>
-                <p><b>Check-out:</b> {pd.to_datetime(reserva['Check-out']).strftime('%d %b %Y')}</p>
-                <p><b>Precio:</b> ${reserva['Precio']:,.2f}</p>
-                <p><b>Estado:</b> {reserva['Estado']}</p>
-            """, unsafe_allow_html=True)
-
-            # === ELIMINAR RESERVA (si hay ID disponible) ===
-            doc_id = None
-            for doc in db.collection("bookings").stream():
-                data = doc.to_dict()
-                if (
-                    data.get("Huesped") == reserva["Huesped"]
-                    and data.get("Habitación") == reserva["Habitación"]
-                    and pd.to_datetime(data.get("Check-in")) == pd.to_datetime(reserva["Check-in"])
-                ):
-                    doc_id = doc.id
-                    break
-
-            if doc_id and st.button("🗑️ Eliminar esta reserva"):
-                db.collection("bookings").document(doc_id).delete()
-                st.success("✅ Reserva eliminada correctamente.")
-                st.session_state["reserva_seleccionada"] = None
-                st.rerun()
-
-            st.markdown("</div>", unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <div style="background-color:#1e1e21; padding:30px; border-radius:16px; border:1px dashed #00ffe150; color:#aaa;">
-                <p>Selecciona una reserva en la columna izquierda para ver los detalles.</p>
             </div>
             """, unsafe_allow_html=True)
+
+            with st.expander("Ver detalles de esta reserva"):
+                checkin = pd.to_datetime(reserva_dict["Check-in"]).strftime('%d %b %Y')
+                checkout = pd.to_datetime(reserva_dict["Check-out"]).strftime('%d %b %Y')
+
+                st.markdown(f"""
+                <div style="font-size:16px; line-height:1.8; margin-top:10px;">
+                    <p><b>📍 Propiedad:</b> {reserva_dict['Propiedad']}</p>
+                    <p><b>🛏️ Habitación:</b> {reserva_dict['Habitación']}</p>
+                    <p><b>📅 Check-in:</b> {checkin}</p>
+                    <p><b>📅 Check-out:</b> {checkout}</p>
+                    <p><b>💰 Precio:</b> ${reserva_dict['Precio']:,.2f}</p>
+                    <p><b>🔄 Estado:</b> {reserva_dict['Estado'].capitalize()}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+                # Buscar y eliminar reserva en Firebase
+                doc_id = None
+                for doc in db.collection("bookings").stream():
+                    data = doc.to_dict()
+                    try:
+                        if (
+                            data.get("Huesped") == reserva_dict.get("Huesped") and
+                            data.get("Habitación") == reserva_dict.get("Habitación") and
+                            pd.to_datetime(data.get("Check-in")).date() == pd.to_datetime(reserva_dict.get("Check-in")).date()
+                        ):
+                            doc_id = doc.id
+                            break
+                    except Exception as e:
+                        st.warning(f"⚠️ Error al buscar coincidencias: {e}")
+
+                if doc_id and st.button(f"🗑️ Eliminar reserva de {reserva_dict['Huesped']}", key=f"del-{key}"):
+                    db.collection("bookings").document(doc_id).delete()
+                    st.success("✅ Reserva eliminada correctamente.")
+                    st.rerun()
+
+    # === SECCIONES DE RESERVAS ===
+    mostrar_titulo("Hoy")
+
+
+    for _, row in checkouts_hoy.iterrows():
+        mostrar_tarjeta_reserva(
+            f"{row['Huesped']} ⮕ checkout",
+            f"{row['Habitación']} · {row['Propiedad']}",
+            f"https://i.pravatar.cc/150?u={row['Huesped']}",
+            key=f"out-{row['Huesped']}-{row['Check-in']}",
+            reserva_dict=row.to_dict()
+        )
+
+    for _, row in checkins_hoy.iterrows():
+        mostrar_tarjeta_reserva(
+            f"{row['Huesped']} ⮕ check-in",
+            f"{row['Habitación']} · {row['Propiedad']}",
+            f"https://i.pravatar.cc/150?u={row['Huesped']}",
+            key=f"in-{row['Huesped']}-{row['Check-in']}",
+            reserva_dict=row.to_dict()
+        )
+
+    mostrar_titulo("Upcoming")
+
+    for _, row in upcoming.iterrows():
+        checkin = row["Check-in"].strftime("%d %b")
+        checkout = row["Check-out"].strftime("%d %b")
+        mostrar_tarjeta_reserva(
+            f"{checkin} → {checkout}",
+            f"{row['Huesped']} · {row['Habitación']} · {row['Propiedad']}",
+            f"https://i.pravatar.cc/150?u={row['Huesped']}",
+            key=f"upcoming-{row['Huesped']}-{row['Check-in']}",
+            reserva_dict=row.to_dict()
+        )
+
+
+
 
     
     # Aquí se registran y editan manualmente todas las reservas de huéspedes, con generación automática de gastos.
