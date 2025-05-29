@@ -1,9 +1,13 @@
 # === IMPORTACIONES PRINCIPALES ===
 import streamlit as st
+# Config inicial
+st.set_page_config(page_title="Real Estate | MV Ventures", layout="wide")
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from datetime import datetime as dt
+
+
 
 # === LIBRERÍAS DE VISUALIZACIÓN ===
 import matplotlib.pyplot as plt
@@ -23,8 +27,7 @@ from firebase_config import db
 import time
 
 
-# Config inicial
-st.set_page_config(page_title="Real Estate | MV Ventures", layout="wide")
+
 
 # === MODO OSCURO FORZADO GLOBAL ===
 st.markdown("""
@@ -170,11 +173,13 @@ st.markdown("""
 
 
 # Tabs funcionales de Streamlit (invisibles)
-tabs = st.tabs(["INICIO", "GENERAL", "RESERVAS", "GASTOS", "DETALLES", "EXPANSION"])
+tabs = st.tabs(["INICIO", "GENERAL", "RESERVAS", "GASTOS", "CALENDARIO", "SIMULACION"])
+
+
+
 
 
 # INICIO
-
 
 # ====================================================================================================
 # === TAB INICIO ===============================================================================
@@ -184,43 +189,66 @@ with tabs[0]:
     import time
     import numpy as np
 
-# === CALCULAR MÉTRICAS SEMANALES PARA EL MENSAJE DE IA ===
-    hoy = pd.Timestamp.now(tz=None)
+    # === CALCULAR MÉTRICAS SEMANALES PARA EL MENSAJE DE IA ===
+    hoy = pd.Timestamp.now()
     inicio_semana = hoy.to_period("W").start_time
     fin_semana = inicio_semana + pd.Timedelta(days=6)
 
-    # Procesar fechas
+    # === FECHAS ===
     df["Check-in"] = pd.to_datetime(df["Check-in"], errors="coerce", utc=True).dt.tz_convert(None)
     df["Check-out"] = pd.to_datetime(df["Check-out"], errors="coerce", utc=True).dt.tz_convert(None)
 
-    # === INGRESOS: pagos y pendientes distribuidos por día ===
+    # === INGRESOS SEMANALES (pagados + pendientes, distribuidos por día) ===
     df_ingresos_diarios = calcular_ingresos_diarios(df, inicio_semana, fin_semana)
     ingresos = df_ingresos_diarios["Ingreso_dia"].sum()
 
-
-    # === GASTOS ===
+    # === GASTOS SEMANALES ===
     docs = db.collection("gastos").stream()
     data = [doc.to_dict() | {"id": doc.id} for doc in docs]
     df_gastos = pd.DataFrame(data)
     df_gastos["Fecha"] = pd.to_datetime(df_gastos["Fecha"], errors="coerce", utc=True).dt.tz_convert(None)
 
     gastos_periodo = df_gastos[
-    (df_gastos["Fecha"] >= inicio_semana) & (df_gastos["Fecha"] <= fin_semana)
+        (df_gastos["Fecha"] >= inicio_semana) & (df_gastos["Fecha"] <= fin_semana)
     ]["Monto"].sum()
 
-    beneficio_pct = ((ingresos - gastos_periodo) / ingresos * 100) if ingresos > 0 else 0
+    # === BENEFICIO NETO Y PORCENTAJE ===
+    beneficio_neto = ingresos - gastos_periodo
+    beneficio_pct = (beneficio_neto / ingresos * 100) if ingresos > 0 else 0
     color = "#10b981" if beneficio_pct >= 0 else "#ef4444"
 
-    # === OCUPACIÓN SEMANAL POR HABITACIÓN (pagados + pendientes) ===
-    df_ocupacion_dias = calcular_ocupacion(df, inicio_semana, fin_semana)
+    # === FUNCION OCUPACION COMBINADA ===
+    def calcular_ocupacion_real_futura(df, inicio, fin, hoy):
+        """Calcula días ocupados y futuros reservados dentro de un rango semanal."""
+        df_validas = df.dropna(subset=["Check-in", "Check-out"]).copy()
+        data = []
+        for _, row in df_validas.iterrows():
+            checkin = row["Check-in"]
+            checkout = row["Check-out"]
+            if pd.isnull(checkin) or pd.isnull(checkout):
+                continue
+            for dia in pd.date_range(start=checkin, end=checkout - pd.Timedelta(days=1)):
+                if inicio <= dia <= fin:
+                    estado = "Ocupado" if dia <= hoy else "Futuro"
+                    data.append({"Habitación": row["Habitación"], "Día": dia, "Estado": estado})
+        return pd.DataFrame(data)
+
+    # === OCUPACIÓN SEMANAL POR HABITACIÓN (real + futura) ===
+    df_ocupacion_dias = calcular_ocupacion_real_futura(df, inicio_semana, fin_semana, hoy)
 
     dias_semana = 7
     habitaciones = df["Habitación"].dropna().unique()
+
     ocupacion_resumen = pd.DataFrame({
         "Habitación": habitaciones,
-        "Ocupado (días)": [df_ocupacion_dias[df_ocupacion_dias["Habitación"] == h].shape[0] for h in habitaciones]
+        "OcupadoReal": [df_ocupacion_dias[(df_ocupacion_dias["Habitación"] == h) & (df_ocupacion_dias["Estado"] == "Ocupado")].shape[0] for h in habitaciones],
+        "OcupadoFuturo": [df_ocupacion_dias[(df_ocupacion_dias["Habitación"] == h) & (df_ocupacion_dias["Estado"] == "Futuro")].shape[0] for h in habitaciones]
     })
-    ocupacion_resumen["Ocupado (%)"] = (ocupacion_resumen["Ocupado (días)"] / dias_semana) * 100
+
+    ocupacion_resumen["TotalReservado"] = ocupacion_resumen["OcupadoReal"] + ocupacion_resumen["OcupadoFuturo"]
+    ocupacion_resumen["OcupadoFuturo (%)"] = (ocupacion_resumen["TotalReservado"] / dias_semana) * 100
+
+
 
 
     # DATOS PARA PODER MOSTRAR CORRECTAMENTE LOS TITULOS CON FECHA, ETC, SIEMPRE NECESARIO ANTES DEL CODIGO
@@ -230,16 +258,171 @@ with tabs[0]:
     periodo_str = f"{inicio_semana.strftime('%d %b')} – {fin_semana.strftime('%d %b %Y')}".upper()
 
 
+    # === ENCABEZADO ===
+    st.markdown("<h2 style='text-align:center; color:#00ffe1;'>BIENVENIDO MR VERA</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color:#888;'>Estas son las métricas clave de tus propiedades gestionadas en Airbnb</p>", unsafe_allow_html=True)
+
+    ### AQUI EMPIEZA EL CODIGO PARA LAS CARDS DE LAS 3 ULTIMAS SEMANAS DEL BENEFICIO
+    # === FUNCIONES AUXILIARES ===
+    def limpiar_fechas_mixtas(serie):
+        return pd.to_datetime(
+            serie.apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) and hasattr(x, 'tzinfo') else x),
+            errors="coerce"
+        )
+
+    # === CARGA DE INGRESOS ===
+    df_ingresos = obtener_datos()
+    df_ingresos = df_ingresos[df_ingresos["Estado"].str.lower().isin(["pagado", "pendiente"])].copy()
+    df_ingresos["Check-in"] = pd.to_datetime(df_ingresos["Check-in"], errors="coerce").dt.tz_localize(None)
+    df_ingresos["Check-out"] = pd.to_datetime(df_ingresos["Check-out"], errors="coerce").dt.tz_localize(None)
+
+    # === EXPANDIR INGRESOS POR DÍA ===
+    df_expandido = []
+    for _, row in df_ingresos.iterrows():
+        start = row["Check-in"]
+        end = row["Check-out"]
+        total_dias = (end - start).days
+        if total_dias <= 0:
+            continue
+        ingreso_dia = row["Precio"] / total_dias
+        for i in range(total_dias):
+            dia = start + pd.Timedelta(days=i)
+            periodo_dia = dia.to_period("W").start_time
+            df_expandido.append({"Periodo": periodo_dia, "Ingreso_dia": ingreso_dia})
+
+    df_ingresos_diarios = pd.DataFrame(df_expandido)
+    df_ingresos_grouped = df_ingresos_diarios.groupby("Periodo")["Ingreso_dia"].sum().reset_index()
+    df_ingresos_grouped.columns = ["Periodo", "Ingresos"]
+
+    # === CARGA DE GASTOS (FIJOS + VARIABLES) ===
+    df_gastos = pd.DataFrame([doc.to_dict() for doc in db.collection("gastos").stream()])
+    df_gastos["Fecha"] = limpiar_fechas_mixtas(df_gastos["Fecha"])
+    df_gastos = df_gastos[df_gastos["Fecha"].notna()]
+    df_gastos["Periodo"] = df_gastos["Fecha"].dt.to_period("W").apply(lambda r: r.start_time)
+
+    df_gastos_grouped = df_gastos.groupby("Periodo")["Monto"].sum().reset_index()
+    df_gastos_grouped.columns = ["Periodo", "Gastos"]
+
+    # === CÁLCULO DE BENEFICIO NETO POR SEMANA ===
+    df_beneficio = pd.merge(df_ingresos_grouped, df_gastos_grouped, on="Periodo", how="outer").fillna(0)
+    df_beneficio["Beneficio neto"] = df_beneficio["Ingresos"] - df_beneficio["Gastos"]
+    df_beneficio["Beneficio %"] = df_beneficio.apply(
+        lambda row: (row["Beneficio neto"] / row["Ingresos"] * 100) if row["Ingresos"] > 0 else 0,
+        axis=1
+    )
+    df_beneficio["PeriodoStr"] = df_beneficio["Periodo"].dt.strftime("%d %b") + " – " + (
+        df_beneficio["Periodo"] + pd.Timedelta(days=6)
+    ).dt.strftime("%d %b")
+
+    
+
+    # === MOSTRAR CARDS DE SEMANA ANTERIOR, ACTUAL Y SIGUIENTE ===
+    from datetime import datetime, timedelta
+
+    hoy = pd.Timestamp.today()
+    sem_anterior = hoy - pd.DateOffset(weeks=1)
+    sem_actual = hoy
+    sem_siguiente = hoy + pd.DateOffset(weeks=1)
+
+    # Convertimos a periodo semanal
+    semanas_deseadas = [
+        sem_anterior.to_period("W").start_time,
+        sem_actual.to_period("W").start_time,
+        sem_siguiente.to_period("W").start_time
+    ]
+
+    ultimas_3 = df_beneficio[df_beneficio["Periodo"].isin(semanas_deseadas)].sort_values("Periodo")
+
+    col1, col2, col3 = st.columns(3)
+    columnas = [col1, col2, col3]
+
+    for i, (_, row) in enumerate(ultimas_3.iterrows()):
+        periodo_str = row["PeriodoStr"]
+        beneficio = row["Beneficio neto"]
+        beneficio_pct = row["Beneficio %"]
+        color_pct = "#10b981" if beneficio_pct >= 0 else "#ef4444"
+
+        columnas[i].markdown(f"""
+            <div style="background-color:#111827; padding:20px; border-radius:12px; text-align:center">
+                <span style="color:#ccc;">{periodo_str}</span><br>
+                <span style="font-size:18px; color:#ccc;">Beneficio neto:</span><br>
+                <span style="font-size:22px; font-weight:bold; color:#00ffe1;">${beneficio:,.2f}</span><br>
+                <span style="font-size:16px; font-weight:bold; color:{color_pct};">{beneficio_pct:.1f}%</span>
+            </div>
+        """, unsafe_allow_html=True)
+
+    ### AQUI ACABA EL CODIGO PARA LAS CARDS DE LAS 3 ULTIMAS SEMANAS DEL BENEFICIO
+
+    # === SEPARADOR VISUAL ENTRE SEMANA Y MES ===
+    st.markdown("""
+        <div style="text-align: center; margin: 40px 0;">
+            <hr style="border: none; height: 2px; background-color: #00ffe1; margin-bottom: 10px;">
+            <h4 style="color:#00ffe1; margin: 0;">INGRESOS 2025</h4>
+            <hr style="border: none; height: 2px; background-color: #00ffe1; margin-top: 10px;">
+        </div>
+        """, unsafe_allow_html=True)
+    
+    ### CARDS DE INGRESOS TOTALES
+
+    # Esta pestaña presenta un resumen mensual de ingresos y niveles de ocupación global con análisis detallado.
+    total = df["Precio"].sum()
+    upcoming = df[df["Check-in"] > hoy]["Precio"].sum()
+    ingreso_mes = df[df["Mes"] == hoy.to_period("M").to_timestamp()]["Precio"].sum()
+
+    # Obtener el mes actual
+    meses_es = {
+        "January": "Enero", "February": "Febrero", "March": "Marzo", "April": "Abril",
+        "May": "Mayo", "June": "Junio", "July": "Julio", "August": "Agosto",
+        "September": "Septiembre", "October": "Octubre", "November": "Noviembre", "December": "Diciembre"
+    }
+    mes_actual_nombre = meses_es[hoy.strftime("%B")]
+
+    col1, col2, col3 = st.columns(3)
+
+    valores = [
+        {"titulo": "INGRESOS RECIBIDOS", "valor": total, "color": "#00ffe1"},
+        {"titulo": "PRÓXIMOS INGRESOS", "valor": upcoming, "color": "#3b82f6"},
+        {"titulo": f"{mes_actual_nombre.upper()}", "valor": ingreso_mes, "color": "#10b981"},
+    ]
+
+    for i, col in enumerate([col1, col2, col3]):
+        item = valores[i]
+        col.markdown(f"""
+            <div style="background-color:#111827; padding:20px; border-radius:12px; text-align:center">
+                <span style="font-size:14px; color:#888;">{item["titulo"]}</span><br>
+                <span style="font-size:24px; font-weight:bold; color:{item["color"]};">${item["valor"]:,.2f} AUD</span>
+            </div>
+        """, unsafe_allow_html=True)
+
+
+# === SEPARADOR VISUAL ENTRE SEMANA Y MES ===
+    st.markdown("""
+        <div style="text-align: center; margin: 40px 0;">
+            <hr style="border: none; height: 2px; background-color: #00ffe1; margin-bottom: 10px;">
+            <h4 style="color:#00ffe1; margin: 0;">RESUMEN SEMANAL</h4>
+            <hr style="border: none; height: 2px; background-color: #00ffe1; margin-top: 10px;">
+        </div>
+        """, unsafe_allow_html=True)
+
+    
+
+
     # === CONSTRUIR MENSAJE JARVIS ===
     lineas_ocupacion = ""
     for _, row in ocupacion_resumen.iterrows():
-        lineas_ocupacion += f"<span class='jarvis-line'> <b>{row['Habitación']}:</b> <span style='color:#00ffe1;'>{row['Ocupado (%)']:.1f}%</span></span>"
+        lineas_ocupacion += f"<span class='jarvis-line'> <b>{row['Habitación']}:</b> <span style='color:#00ffe1;'>{row['OcupadoFuturo (%)']:.1f}%</span></span>"
+
+
+    # Calcular beneficio neto si aún no está
+    beneficio_neto = ingresos - gastos_periodo
+    beneficio_pct = (beneficio_neto / ingresos) * 100 if ingresos > 0 else 0
+
 
     mensaje_ia = f"""
     <div class="jarvis-box">
         <div class="jarvis-header">🧠 JARVIS ANALYTICS // PERTH // {periodo_str}</div>
         <div class="jarvis-body">
-            <span class="jarvis-line"> <b>Beneficio semanal neto:</b> <span style="color:#10b981;">{beneficio_pct:.1f}%</span></span>
+            <span class="jarvis-line"> <b>Beneficio semanal neto:</b> <span style="color:#10b981;">${beneficio_neto:,.2f} ({beneficio_pct:.1f}%)</span></span>
             <span class="jarvis-line"> <b>Ingresos esta semana:</b> <span style="color:#00ffe1;">${ingresos:,.2f}</span></span>
             <span class="jarvis-line"> <b>Gastos:</b> <span style="color:#00ffe1;">${gastos_periodo:,.2f}</span></span>
             {lineas_ocupacion}
@@ -298,65 +481,64 @@ with tabs[0]:
 
     st.markdown(mensaje_ia, unsafe_allow_html=True)
 
-    # JARVIS 2 === INSIGHT EJECUTIVO SEMANAL =======================================================
+    # === SEPARADOR VISUAL ENTRE SEMANA Y MES ===
+    st.markdown("""
+    <div style="text-align: center; margin: 40px 0;">
+        <hr style="border: none; height: 2px; background-color: #00ffe1; margin-bottom: 10px;">
+        <h4 style="color:#00ffe1; margin: 0;">RESUMEN MENSUAL</h4>
+        <hr style="border: none; height: 2px; background-color: #00ffe1; margin-top: 10px;">
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Preparar variables necesarias
-    habitaciones_activas = df["Habitación"].nunique()
-    total_reservas_semana = df_ingresos_diarios["Día"].nunique()
-    ocupacion_total_dias = ocupacion_resumen["Ocupado (días)"].sum()
-    ocupacion_promedio = (ocupacion_total_dias / (habitaciones_activas * 7)) * 100 if habitaciones_activas > 0 else 0
+   # === CALCULAR PERIODO DEL MES ===
+    inicio_mes = hoy.to_period("M").start_time
+    fin_mes = hoy.to_period("M").end_time
+    periodo_str_mes = f"{inicio_mes.strftime('%d %b')} – {fin_mes.strftime('%d %b %Y')}".upper()
 
-    # Formar mensaje con datos reales de la semana
-    # === INSIGHT EJECUTIVO SEMANAL – VERSIÓN MEJORADA =========================================
+    # === INGRESOS DEL MES ===
+    df_ingresos_mes = calcular_ingresos_diarios(df, inicio_mes, fin_mes)
+    ingresos_mes = df_ingresos_mes["Ingreso_dia"].sum()
 
-    insight_text = f"""
-    <div class="insight-box">
-        <div class="insight-title">📊 INSIGHT EJECUTIVO SEMANAL</div>
-        <div class="insight-body">
-            <p><strong>🗓️ Periodo:</strong> <span>{inicio_semana.strftime('%d %b')} – {fin_semana.strftime('%d %b %Y')}</span></p>
-            <p><strong>💰 Ingresos reales:</strong> <span style="color:#00ffe1;">${ingresos:,.2f} AUD</span></p>
-            <p><strong>🛏️ Habitaciones activas:</strong> {habitaciones_activas}  
-            &nbsp;&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp; 
-            <strong>🏠 Ocupación promedio:</strong> <span style="color:#10b981;">{ocupacion_promedio:.1f}%</span></p>
-            <p><strong>💸 Gastos totales:</strong> <span style="color:#00ffe1;">${gastos_periodo:,.2f} AUD</span></p>
-            <p><strong>📈 Beneficio neto semanal:</strong> <span style="color:{color};">{beneficio_pct:.1f}%</span></p>
-            <hr style="border: none; height: 1px; background-color: #00ffe120; margin: 12px 0;">
-            <p style="font-style: italic; color: #aaa;">Basado en ocupación real proporcional<br>independientemente del estado de pago.</p>
+    # === GASTOS DEL MES ===
+    gastos_mes = df_gastos[
+        (df_gastos["Fecha"] >= inicio_mes) & (df_gastos["Fecha"] <= fin_mes)
+    ]["Monto"].sum()
+
+    # === BENEFICIO DEL MES ===
+    beneficio_mes_pct = ((ingresos_mes - gastos_mes) / ingresos_mes * 100) if ingresos_mes > 0 else 0
+
+    # === OCUPACIÓN DEL MES (real + futura) ===
+    df_ocupacion_mes = calcular_ocupacion_real_futura(df, inicio_mes, fin_mes, hoy)
+    habitaciones_mes = df["Habitación"].dropna().unique()
+
+    ocupacion_resumen_mes = pd.DataFrame({
+        "Habitación": habitaciones_mes,
+        "OcupadoReal": [df_ocupacion_mes[(df_ocupacion_mes["Habitación"] == h) & (df_ocupacion_mes["Estado"] == "Ocupado")].shape[0] for h in habitaciones_mes],
+        "OcupadoFuturo": [df_ocupacion_mes[(df_ocupacion_mes["Habitación"] == h) & (df_ocupacion_mes["Estado"] == "Futuro")].shape[0] for h in habitaciones_mes],
+    })
+    ocupacion_resumen_mes["TotalReservado"] = ocupacion_resumen_mes["OcupadoReal"] + ocupacion_resumen_mes["OcupadoFuturo"]
+    ocupacion_resumen_mes["OcupadoFuturo (%)"] = (ocupacion_resumen_mes["TotalReservado"] / fin_mes.day) * 100
+
+    # === CONSTRUIR MENSAJE JARVIS MENSUAL ===
+    lineas_ocupacion_mes = ""
+    for _, row in ocupacion_resumen_mes.iterrows():
+        lineas_ocupacion_mes += f"<span class='jarvis-line'> <b>{row['Habitación']}:</b> <span style='color:#00ffe1;'>{row['OcupadoFuturo (%)']:.1f}%</span></span>"
+
+    mensaje_jarvis_mes = f"""
+    <div class="jarvis-box">
+        <div class="jarvis-header">🧠 JARVIS ANALYTICS // PERTH // {periodo_str_mes}</div>
+        <div class="jarvis-body">
+            <span class="jarvis-line"> <b>Beneficio neto del mes:</b> <span style="color:#10b981;">{beneficio_mes_pct:.1f}%</span></span>
+            <span class="jarvis-line"> <b>Ingresos este mes:</b> <span style="color:#00ffe1;">${ingresos_mes:,.2f}</span></span>
+            <span class="jarvis-line"> <b>Gastos:</b> <span style="color:#00ffe1;">${gastos_mes:,.2f}</span></span>
+            {lineas_ocupacion_mes}
+            <span class="jarvis-status"> Sistema operativo en expansión...</span>
         </div>
     </div>
     """
 
-    st.markdown(insight_text, unsafe_allow_html=True)
+    st.markdown(mensaje_jarvis_mes, unsafe_allow_html=True)
 
-    # === ESTILOS MEJORADOS =====================================================
-    st.markdown("""
-    <style>
-    .insight-box {
-        background-color: #0f1115;
-        border: 1px solid #00ffe1;
-        border-radius: 14px;
-        padding: 24px;
-        margin-top: 32px;
-        box-shadow: 0 0 25px #00ffe120;
-        font-family: 'Segoe UI', sans-serif;
-    }
-    .insight-title {
-        font-size: 18px;
-        color: #00ffe1;
-        font-weight: bold;
-        margin-bottom: 16px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        text-shadow: 0 0 4px #00ffe180;
-    }
-    .insight-body p {
-        font-size: 15px;
-        color: #ccc;
-        line-height: 1.6;
-        margin-bottom: 10px;
-    }
-    </style>
-    """, unsafe_allow_html=True)
 
 
 
@@ -433,162 +615,190 @@ with tabs[0]:
     """, unsafe_allow_html=True)
 
 
-    
+
+# === GRÁFICO COMPARATIVO DE INGRESOS, GASTOS Y BENEFICIO NETO (usando datos de la tabla) ===
+
+    # === NUEVA TABLA: Beneficio neto por período ===
+    st.markdown("## 🧾 Beneficio neto por período")
+
+    # === Selector de agrupación de periodo (único para evitar conflictos) ===
+    periodo = st.selectbox("🔁 Agrupar por:", ["Semanal", "Mensual", "Anual"], key="agrupacion_beneficio")
+
+    # === FUNCIÓN UNIVERSAL PARA LIMPIAR FECHAS CON O SIN ZONA HORARIA ===
+    def limpiar_fechas_mixtas(serie):
+        return pd.to_datetime(
+            serie.apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) and hasattr(x, 'tzinfo') else x),
+            errors="coerce"
+        )
 
 
-    # === ENCABEZADO ===
-    st.markdown("<h2 style='text-align:center; color:#00ffe1;'>BIENVENIDO MR VERA</h2>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align:center; color:#888;'>Estas son las métricas clave de tus propiedades gestionadas en Airbnb</p>", unsafe_allow_html=True)
+    # === Obtener ingresos y expandir proporcionalmente por día ===
+    df_ingresos = obtener_datos()
+    df_ingresos = df_ingresos[df_ingresos["Estado"].str.lower().isin(["pagado", "pendiente"])].copy()
+    df_ingresos["Check-in"] = pd.to_datetime(df_ingresos["Check-in"], errors="coerce").dt.tz_localize(None)
+    df_ingresos["Check-out"] = pd.to_datetime(df_ingresos["Check-out"], errors="coerce").dt.tz_localize(None)
 
-    # === MÉTRICAS PRINCIPALES ===
-    st.markdown(f"""
-        <div class="metrics">
-            <div class="metric-card">
-                <div class="metric-label">Total Reservas</div>
-                <div class="metric-value">{total_reservas}</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Ingresos Totales (AUD)</div>
-                <div class="metric-value">${ingresos_totales:,.2f}</div>
-            </div>
-            <div class="metric-card">
-                <div class="metric-label">Habitaciones activas</div>
-                <div class="metric-value">{habitaciones_activas}</div>
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-    # === RESUMEN FINANCIERO SEMANAL (ACTUALIZADO AUTOMÁTICAMENTE) ===
-
-    # Obtener fecha de hoy y límites de semana
-    hoy = pd.Timestamp.today()
-    inicio_semana = hoy.to_period("W").start_time
-    fin_semana = inicio_semana + pd.Timedelta(days=6)
-    periodo_str = f"{inicio_semana.strftime('%d %b')} – {fin_semana.strftime('%d %b %Y')}".upper()
-
-    st.markdown(f"""
-    <div style="text-align: center; margin: 40px 0;">
-        <hr style="border: none; height: 2px; background-color: #00ffe1; margin-bottom: 10px;">
-        <h4 style="color:#00ffe1; margin: 0;">{periodo_str}</h4>
-        <hr style="border: none; height: 2px; background-color: #00ffe1; margin-top: 10px;">
-    </div>
-    """, unsafe_allow_html=True)
-
-    # === Cargar y procesar gastos ===
-    docs = db.collection("gastos").stream()
-    data = [doc.to_dict() | {"id": doc.id} for doc in docs]
-    df_gastos = pd.DataFrame(data)
-    df_gastos["Fecha"] = pd.to_datetime(df_gastos["Fecha"], errors="coerce", utc=True).dt.tz_convert(None)
-
-    # ✅ INGRESOS: pagos y pendientes distribuidos por día
-    df_validos = df.dropna(subset=["Check-in", "Check-out"]).copy()
-
-    df_ingresos_expandido = []
-    for _, row in df_validos.iterrows():
+    df_expandido = []
+    for _, row in df_ingresos.iterrows():
         start = row["Check-in"]
         end = row["Check-out"]
         total_dias = (end - start).days
         if total_dias <= 0:
             continue
-        ingreso_diario = row["Precio"] / total_dias
+        ingreso_dia = row["Precio"] / total_dias
         for i in range(total_dias):
             dia = start + pd.Timedelta(days=i)
-            if inicio_semana <= dia <= fin_semana:
-                df_ingresos_expandido.append({
-                    "Día": dia,
-                    "Ingreso_dia": ingreso_diario
-                })
+            if periodo == "Semanal":
+                periodo_dia = dia.to_period("W").start_time
+            elif periodo == "Mensual":
+                periodo_dia = dia.to_period("M").to_timestamp()
+            else:
+                periodo_dia = dia.to_period("Y").to_timestamp()
+            df_expandido.append({"Periodo": periodo_dia, "Ingreso_dia": ingreso_dia})
 
-    df_ingresos_diarios = pd.DataFrame(df_ingresos_expandido)
-    ingresos = df_ingresos_diarios["Ingreso_dia"].sum()
+    df_ingresos_diarios = pd.DataFrame(df_expandido)
+    df_ingresos_grouped = df_ingresos_diarios.groupby("Periodo")["Ingreso_dia"].sum().reset_index()
+    df_ingresos_grouped.columns = ["Periodo", "Ingresos"]
+
+    # === Cargar y procesar gastos ===
+    df_gastos = pd.DataFrame([doc.to_dict() for doc in db.collection("gastos").stream()])
+    df_gastos["Fecha"] = limpiar_fechas_mixtas(df_gastos["Fecha"])
+    df_gastos = df_gastos[df_gastos["Fecha"].notna()]  # eliminar NaT
+
+    if periodo == "Semanal":
+        df_gastos["Periodo"] = df_gastos["Fecha"].dt.to_period("W").apply(lambda r: r.start_time)
+    elif periodo == "Mensual":
+        df_gastos["Periodo"] = df_gastos["Fecha"].dt.to_period("M").dt.to_timestamp()
+    else:
+        df_gastos["Periodo"] = df_gastos["Fecha"].dt.to_period("Y").dt.to_timestamp()
+
+    df_gastos_grouped = df_gastos.groupby("Periodo")["Monto"].sum().reset_index()
+    df_gastos_grouped.columns = ["Periodo", "Gastos"]
+
+    # === Calcular beneficio neto ===
+    df_beneficio = pd.merge(df_ingresos_grouped, df_gastos_grouped, on="Periodo", how="outer").fillna(0)
+    df_beneficio["Beneficio neto"] = df_beneficio["Ingresos"] - df_beneficio["Gastos"]
+    df_beneficio["% Beneficio neto"] = df_beneficio.apply(
+        lambda row: (row["Beneficio neto"] / row["Ingresos"] * 100) if row["Ingresos"] > 0 else 0,
+        axis=1
+    )
+
+    # === Filtro de mes actual ===
+    df_beneficio["MesFiltro"] = df_beneficio["Periodo"].dt.to_period("M").dt.to_timestamp()
+    mes_actual = pd.Timestamp.today().to_period("M").to_timestamp()
+    meses_disponibles = df_beneficio["MesFiltro"].sort_values(ascending=False).unique()
+
+    mes_seleccionado = st.selectbox("📅 Selecciona el mes:", meses_disponibles, index=list(meses_disponibles).index(mes_actual), key="mes_beneficio")
+
+    df_filtrado = df_beneficio[df_beneficio["MesFiltro"] == mes_seleccionado]
+
+    # === Etiquetas legibles para la columna periodo ===
+    if periodo == "Semanal":
+        df_filtrado["PeriodoStr"] = df_filtrado["Periodo"].dt.strftime("%d %b") + " – " + (
+            df_filtrado["Periodo"] + pd.Timedelta(days=6)
+        ).dt.strftime("%d %b")
+    else:
+        df_filtrado["PeriodoStr"] = df_filtrado["Periodo"].dt.strftime({
+            "Mensual": "%b %Y",
+            "Anual": "%Y"
+        }[periodo])
+
+    df_filtrado["Beneficio %"] = df_filtrado.apply(
+        lambda row: ((row["Beneficio neto"] / row["Ingresos"]) * 100) if row["Ingresos"] > 0 else 0,
+        axis=1
+    )
+
+    # === Tabla formateada para mostrar ===
+    df_tabla_beneficio = df_filtrado[["PeriodoStr", "Ingresos", "Gastos", "Beneficio neto", "Beneficio %"]].rename(columns={
+        "PeriodoStr": "🗓️ Periodo",
+        "Ingresos": "💰 Ingresos",
+        "Gastos": "🌿 Gastos",
+        "Beneficio neto": "📈 Beneficio neto",
+        "Beneficio %": "📊 % Beneficio neto"
+    })
+
+    df_tabla_beneficio["💰 Ingresos"] = df_tabla_beneficio["💰 Ingresos"].apply(lambda x: f"${x:,.2f}")
+    df_tabla_beneficio["🌿 Gastos"] = df_tabla_beneficio["🌿 Gastos"].apply(lambda x: f"${x:,.2f}")
+    df_tabla_beneficio["📈 Beneficio neto"] = df_tabla_beneficio["📈 Beneficio neto"].apply(lambda x: f"${x:,.2f}")
+    df_tabla_beneficio["📊 % Beneficio neto"] = df_tabla_beneficio["📊 % Beneficio neto"].apply(lambda x: f"{x:.1f}%")
+
+    # === Mostrar la tabla opcionalmente (oculta por defecto) ===
+    with st.expander("📋 Ver tabla de beneficio neto"):
+        try:
+            import ace_tools as tools
+            tools.display_dataframe_to_user("📊 Beneficio neto por período", df_tabla_beneficio)
+        except:
+            st.dataframe(df_tabla_beneficio, use_container_width=True)
 
 
-        # Filtrar gastos de la semana actual
-    gastos_periodo = df_gastos[
-            (df_gastos["Fecha"] >= inicio_semana) & (df_gastos["Fecha"] <= fin_semana)
-        ]["Monto"].sum()
 
-    # Calcular beneficio neto %
-    beneficio_pct = ((ingresos - gastos_periodo) / ingresos * 100) if ingresos > 0 else 0
-    color = "#10b981" if beneficio_pct >= 0 else "#ef4444"
+ #GRAFICO DE BENEFICIO BASADO EN LA TABLA DE ARRIBA
+    # === PREPARAR DATOS PARA GRÁFICO ALTAR ===
+    df_plot = df_filtrado[["PeriodoStr", "Ingresos", "Gastos", "Beneficio neto"]].copy()
+    df_long = df_plot.melt(
+        id_vars="PeriodoStr",
+        value_vars=["Ingresos", "Gastos", "Beneficio neto"],
+        var_name="Tipo",
+        value_name="Valor"
+    )
 
-    # === Mostrar tarjetas ===
-    col1, col2, col3 = st.columns(3)
+    # === ESCALA DE COLORES PERSONALIZADA ===
+    colores = alt.Scale(
+        domain=["Ingresos", "Gastos", "Beneficio neto"],
+        range=["#10b981", "#e60073", "#00ffe1"]
+    )
 
-    with col1:
-        st.markdown(f"""
-            <div style="background-color:#111827; padding:20px; border-radius:12px; text-align:center">
-                <span style="color:#ccc;">Ingreso semana actual</span><br>
-                <span style="font-size:24px; font-weight:bold; color:#00ffe1;">${ingresos:,.2f}</span>
-            </div>
-        """, unsafe_allow_html=True)
+    # === GRÁFICO DE LÍNEAS + ETIQUETAS ===
+    line_chart = alt.Chart(df_long).mark_line(point=True, strokeWidth=3).encode(
+        x=alt.X("PeriodoStr:N", title="Periodo", sort=df_plot["PeriodoStr"].tolist()),
+        y=alt.Y("Valor:Q", title="Total $AUD"),
+        color=alt.Color("Tipo:N", scale=colores),
+        tooltip=["PeriodoStr", "Tipo", "Valor"]
+    )
 
-    with col2:
-        st.markdown(f"""
-            <div style="background-color:#111827; padding:20px; border-radius:12px; text-align:center">
-                <span style="color:#ccc;">Gasto semanal (rent + limpieza)</span><br>
-                <span style="font-size:24px; font-weight:bold; color:#00ffe1;">${gastos_periodo:,.2f}</span>
-            </div>
-        """, unsafe_allow_html=True)
+    text_labels = alt.Chart(df_long).mark_text(
+        align="center",
+        baseline="bottom",
+        dy=-8,
+        fontSize=12,
+        color="#ccc"
+    ).encode(
+        x=alt.X("PeriodoStr:N", sort=df_plot["PeriodoStr"].tolist()),
+        y="Valor:Q",
+        text=alt.Text("Valor:Q", format="$,.0f"),
+        color=alt.Color("Tipo:N", scale=colores)
+    )
 
-    with col3:
-        st.markdown(f"""
-            <div style="background-color:#111827; padding:20px; border-radius:12px; text-align:center">
-                <span style="color:#ccc;">Beneficio neto (%)</span><br>
-                <span style="font-size:24px; font-weight:bold; color:{color};">{beneficio_pct:.1f}%</span>
-            </div>
-        """, unsafe_allow_html=True)
-
-
-# === GRÁFICO COMPARATIVO DE INGRESOS Y GASTOS POR MES ===
-
-    # Base de meses fijos
-    meses_fijos = pd.date_range(start="2025-01-01", end="2025-12-01", freq="MS")
-    df_meses = pd.DataFrame({"Mes": meses_fijos})
-
-    # Ingresos por mes
-    df_ingresos_mensuales = df[df["Estado"].str.lower() == "pagado"].groupby("Mes")["Precio"].sum().reset_index()
-    df_ingresos_mensuales.columns = ["Mes", "Ingresos"]
-
-    # Gastos por mes
-    df_gastos["Mes"] = df_gastos["Fecha"].dt.to_period("M").dt.to_timestamp()
-    df_gastos_mensuales = df_gastos.groupby("Mes")["Monto"].sum().reset_index()
-    df_gastos_mensuales.columns = ["Mes", "Gastos"]
-
-    # Fusionar todo
-    df_merge = df_meses.merge(df_ingresos_mensuales, on="Mes", how="left")
-    df_merge = df_merge.merge(df_gastos_mensuales, on="Mes", how="left")
-    df_merge = df_merge.fillna(0)
-    df_merge["MesNombre"] = df_merge["Mes"].dt.strftime("%b")
-
-    # Transformar a formato largo (melt)
-    df_long = df_merge.melt(id_vars=["MesNombre"], value_vars=["Ingresos", "Gastos"], var_name="Tipo", value_name="Valor")
-
-    # Gráfico Altair
-    chart = alt.Chart(df_long).mark_bar().encode(
-        x=alt.X("MesNombre:N", title="Mes", sort=list(df_meses["Mes"].dt.strftime("%b"))),
-        y=alt.Y("Valor:Q", title="$ AUD"),
-        color=alt.Color("Tipo:N", scale=alt.Scale(domain=["Ingresos", "Gastos"], range=["#00ffe1", "#e60073"])),
-        tooltip=["MesNombre", "Tipo", "Valor"]
-    ).properties(
-        height=300,
+    # === COMBINAR Y MOSTRAR ===
+    grafico_beneficio = (line_chart + text_labels).properties(
+        height=360,
         background="#0f1115",
-        title="Evolución mensual de ingresos vs gastos"
+        title="📊 Ingresos, Gastos y Beneficio neto (sincronizado)"
     ).configure_axis(
         labelColor="#ccc",
         titleColor="#00ffe1"
     ).configure_legend(
-        title=None,
-        labelColor="#ccc"
+        labelColor="#ccc",
+        titleColor="#00ffe1"
     ).configure_title(
         color="#00ffe1"
     ).configure_view(
         stroke=None
     )
 
-    # Mostrar el gráfico
-    st.markdown("---")
-    st.altair_chart(chart, use_container_width=True)
+    # === MOSTRAR EN STREAMLIT ===
+    st.altair_chart(grafico_beneficio, use_container_width=True)
+
+    
+
+
+
+
+
+
+
+
+
 
 
 # ---------- GENERAL ---------- #
@@ -1090,6 +1300,134 @@ with tabs[1]:
 # === TAB RESERVAS ===============================================================================
 # ====================================================================================================
 with tabs[2]:
+    
+    
+    from datetime import datetime
+
+    # === DATOS ===
+    df["Check-in"] = pd.to_datetime(df["Check-in"], errors="coerce")
+    df["Check-out"] = pd.to_datetime(df["Check-out"], errors="coerce")
+    hoy = pd.to_datetime(datetime.today().date())
+
+    checkins_hoy = df[df["Check-in"].dt.date == hoy.date()]
+    checkouts_hoy = df[df["Check-out"].dt.date == hoy.date()]
+    upcoming = df[df["Check-in"].dt.date > hoy.date()].sort_values("Check-in")
+
+    # === SESIÓN PARA DETALLE ===
+    if "reserva_seleccionada" not in st.session_state:
+        st.session_state["reserva_seleccionada"] = None
+
+    # === ESTILOS ===
+    st.markdown("""
+    <style>
+    .card-reserva {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background-color: #111827;
+        padding: 16px;
+        margin: 10px 0;
+        border-radius: 12px;
+        border: 1px solid #00ffe180;
+        box-shadow: 0 0 10px #00ffe120;
+        cursor: pointer;
+    }
+    .card-left {
+        display: flex;
+        flex-direction: column;
+        color: white;
+    }
+    .card-title {
+        font-weight: 600;
+        font-size: 16px;
+        color: #00ffe1;
+    }
+    .card-subtitle {
+        font-size: 13px;
+        color: #aaa;
+    }
+    .card-avatar {
+        width: 45px;
+        height: 45px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2px solid #00ffe1;
+    }
+    .section-title {
+        font-size: 20px;
+        color: #00ffe1;
+        margin-top: 30px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # === COLUMNAS: IZQUIERDA RESERVAS / DERECHA DETALLES ===
+    col_izq, col_der = st.columns([1.4, 2])
+
+    with col_izq:
+        st.markdown("<div class='section-title'>Hoy</div>", unsafe_allow_html=True)
+
+        for _, row in checkouts_hoy.iterrows():
+            if st.button(f"{row['Huesped']} ⮕ checkout", key=f"out-{row['Huesped']}-{row['Check-in']}"):
+                st.session_state["reserva_seleccionada"] = row.to_dict()
+
+        for _, row in checkins_hoy.iterrows():
+            if st.button(f"{row['Huesped']} ⮕ check-in", key=f"in-{row['Huesped']}-{row['Check-in']}"):
+                st.session_state["reserva_seleccionada"] = row.to_dict()
+
+        st.markdown("<div class='section-title'>Upcoming</div>", unsafe_allow_html=True)
+
+        for _, row in upcoming.iterrows():
+            label = f"{row['Check-in'].strftime('%d-%b')} → {row['Check-out'].strftime('%d %b')} · {row['Huesped']}"
+            if st.button(label, key=f"upcoming-{row['Huesped']}-{row['Check-in']}"):
+                st.session_state["reserva_seleccionada"] = row.to_dict()
+
+    with col_der:
+        reserva = st.session_state["reserva_seleccionada"]
+        if reserva:
+            avatar = f"https://i.pravatar.cc/150?u={reserva['Huesped']}"
+            st.markdown(f"""
+            <div style="background-color:#111827; padding:25px; border-radius:14px; border:1px solid #00ffe120; box-shadow:0 0 15px #00ffe130;">
+                <div style="display:flex; align-items:center; gap:15px;">
+                    <img src="{avatar}" class="card-avatar" />
+                    <h3 style="color:#00ffe1; margin:0;">{reserva['Huesped']}</h3>
+                </div>
+                <hr style="border:1px solid #00ffe140; margin:15px 0;">
+                <p><b>Propiedad:</b> {reserva['Propiedad']}</p>
+                <p><b>Habitación:</b> {reserva['Habitación']}</p>
+                <p><b>Check-in:</b> {pd.to_datetime(reserva['Check-in']).strftime('%d %b %Y')}</p>
+                <p><b>Check-out:</b> {pd.to_datetime(reserva['Check-out']).strftime('%d %b %Y')}</p>
+                <p><b>Precio:</b> ${reserva['Precio']:,.2f}</p>
+                <p><b>Estado:</b> {reserva['Estado']}</p>
+            """, unsafe_allow_html=True)
+
+            # === ELIMINAR RESERVA (si hay ID disponible) ===
+            doc_id = None
+            for doc in db.collection("bookings").stream():
+                data = doc.to_dict()
+                if (
+                    data.get("Huesped") == reserva["Huesped"]
+                    and data.get("Habitación") == reserva["Habitación"]
+                    and pd.to_datetime(data.get("Check-in")) == pd.to_datetime(reserva["Check-in"])
+                ):
+                    doc_id = doc.id
+                    break
+
+            if doc_id and st.button("🗑️ Eliminar esta reserva"):
+                db.collection("bookings").document(doc_id).delete()
+                st.success("✅ Reserva eliminada correctamente.")
+                st.session_state["reserva_seleccionada"] = None
+                st.rerun()
+
+            st.markdown("</div>", unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <div style="background-color:#1e1e21; padding:30px; border-radius:16px; border:1px dashed #00ffe150; color:#aaa;">
+                <p>Selecciona una reserva en la columna izquierda para ver los detalles.</p>
+            </div>
+            """, unsafe_allow_html=True)
+
+    
     # Aquí se registran y editan manualmente todas las reservas de huéspedes, con generación automática de gastos.
     st.markdown("""
         <style>
@@ -1306,120 +1644,20 @@ with tabs[2]:
                 db.collection("gastos").add(gasto_limpieza)
 
 
-# EDICION DE RESERVAS
 
-        st.markdown("---")
-    st.markdown("### ✏️ Reservas registradas (edición manual)")
-
-    # Obtener reservas desde Firestore
-    docs = db.collection("bookings").stream()
-    data = [doc.to_dict() | {"id": doc.id} for doc in docs]
-    df_editar = pd.DataFrame(data)
-
-    if not df_editar.empty:
-        df_editar = df_editar.sort_values("Check-in", ascending=False)
-        df_editar_display = df_editar[[
-            "Check-in", "Check-out", "Huesped", "Habitación", "Estado", "Precio", "id"
-        ]].copy()
-        df_editar_display["Precio"] = df_editar_display["Precio"].apply(lambda x: f"${x:,.2f}")
-        df_editar_display = df_editar_display.rename(columns={
-            "Check-in": "📅 Check-in",
-            "Check-out": "📅 Check-out",
-            "Huesped": "👤 Huésped",
-            "Habitación": "🛏️ Habitación",
-            "Estado": "💳 Estado",
-            "Precio": "💰 Precio",
-            "id": "🔧 ID"
-        })
-
-        st.dataframe(df_editar_display, use_container_width=True)
-
-    st.markdown("Selecciona el ID para editar una reserva:")
-
-    id_seleccionado = st.selectbox("🔧 ID de la reserva", df_editar["id"])
-    reserva = next((item for item in data if item["id"] == id_seleccionado), None)
-
-    if reserva:
-        estado_actual = reserva.get("Estado", "pendiente") or "pendiente"
-
-        with st.form("editar_reserva"):
-            col1, col2 = st.columns(2)
-            with col1:
-                nuevo_estado = st.selectbox("Nuevo estado", ["pagado", "pendiente"], 
-                                            index=["pagado", "pendiente"].index(estado_actual.lower()))
-                nuevo_checkin = st.date_input("Nuevo Check-in", value=pd.to_datetime(reserva["Check-in"]).date())
-                nuevo_checkout = st.date_input("Nuevo Check-out", value=pd.to_datetime(reserva["Check-out"]).date())
-                nuevo_precio = st.number_input("Precio total (AUD)", min_value=0.0, step=10.0, 
-                                            value=float(reserva.get("Precio", 0)))
-            with col2:
-                nuevo_huesped = st.text_input("Nombre del huésped", value=reserva.get("Huesped", ""))
-                nueva_habitacion = st.text_input("Habitación", value=reserva.get("Habitación", ""))
-                nuevo_canal = st.selectbox("Canal", ["Airbnb", "Booking", "Instagram", "Whatsapp", "Otro"], 
-                                        index=["Airbnb", "Booking", "Instagram", "Whatsapp", "Otro"].index(
-                                            reserva.get("Canal", "Airbnb")))
-
-            actualizar = st.form_submit_button("💾 Actualizar")
-
-            if actualizar:
-                db.collection("bookings").document(reserva["id"]).update({
-                    "Estado": nuevo_estado,
-                    "Check-in": str(nuevo_checkin),
-                    "Check-out": str(nuevo_checkout),
-                    "Precio": nuevo_precio,
-                    "Huesped": nuevo_huesped,
-                    "Habitación": nueva_habitacion,
-                    "Canal": nuevo_canal
-                })
-                st.success("✅ Reserva actualizada correctamente.")
-                st.experimental_rerun()
+    
 
 
-#DATOS HISTORICOS DE GASTOS FIJOS PARA LA PESTAÑA DE GASTOS
-
-from datetime import datetime, timedelta
-
-# === Registrar histórico de gastos fijos semanales desde enero ===
-inicio = datetime(2025, 1, 1)
-hoy = datetime.today()
-martes_fechas = []
-
-# Generar todos los martes desde enero
-dia = inicio
-while dia <= hoy:
-    if dia.weekday() == 1:  # Martes
-        martes_fechas.append(datetime.combine(dia.date(), datetime.min.time()))
-    dia += timedelta(days=1)
-
-# Obtener todos los gastos existentes
-docs = db.collection("gastos").stream()
-existentes = [doc.to_dict() for doc in docs]
-
-# Crear set de fechas-tipo ya registradas
-existentes_set = {
-    (d.get("Fecha").date().isoformat(), d.get("Tipo"))
-    for d in existentes if "Fecha" in d and "Tipo" in d and hasattr(d.get("Fecha"), "date")
-}
 
 
-# Registrar los que no existan
-for fecha in martes_fechas:
-    fecha_str = fecha.strftime("%Y-%m-%d")
-    for gasto in [
-        {"Tipo": "Renta semanal", "Monto": 690},
-        {"Tipo": "Internet semanal", "Monto": 12.5},
-        {"Tipo": "Electricidad semanal", "Monto": 30}
-    ]:
-        if (fecha_str, gasto["Tipo"]) not in existentes_set:
-            db.collection("gastos").add({
-                "Fecha": fecha,
-                "Tipo": gasto["Tipo"],
-                "Monto": gasto["Monto"],
-                "Categoria": "Fijo",
-                "Propiedad": "CBD"
-            })
 
 
-# ---------- GASTOS DEDUCIBLES ACTUALIZADOS (tabs[3]) ----------
+
+
+
+
+
+
 
 
 # ====================================================================================================
@@ -1962,7 +2200,9 @@ with tabs[3]:
             st.dataframe(df_tabla, use_container_width=True)
 
 
-#DETALLES
+# ====================================================================================================
+# === TAB CALENDARIO ===================================================================================
+# ====================================================================================================
 
 from datetime import datetime
 import plotly.express as px
@@ -1974,7 +2214,6 @@ from streamlit_js_eval import streamlit_js_eval  # 👈 asegúrate de tener esto
 with tabs[4]:
     st.markdown("## BOOKINGS")
     
-
     # Detectar ancho del navegador
     width = streamlit_js_eval(js_expressions="screen.width", key="width_key")
 
@@ -2005,6 +2244,26 @@ with tabs[4]:
     df_gantt["Check-in"] = pd.to_datetime(df_gantt["Check-in"])
     df_gantt["Check-out"] = pd.to_datetime(df_gantt["Check-out"])
     hoy = pd.to_datetime("today")
+
+    # === Selector de mes ===
+    meses_disponibles = pd.date_range(
+        df_gantt["Check-in"].min(), df_gantt["Check-out"].max(), freq="MS"
+    ).to_period("M").unique()
+
+    mes_seleccionado = st.selectbox(
+        "📆 Elegir mes a visualizar",
+        options=[str(m) for m in meses_disponibles],
+        index=len(meses_disponibles)-1  # el más reciente por defecto
+    )
+
+    # Filtrar dataframe por el mes seleccionado
+    inicio_mes = pd.to_datetime(f"{mes_seleccionado}-01")
+    fin_mes = inicio_mes + pd.offsets.MonthEnd(0)
+
+    df_gantt = df_gantt[
+        (df_gantt["Check-in"] <= fin_mes) & (df_gantt["Check-out"] >= inicio_mes)
+]
+
 
     df_gantt["Estado"] = df["Estado"].str.lower().map({
         "pagado": "Actual-Pagada",
@@ -2119,45 +2378,11 @@ with tabs[4]:
 
     
 
-
-
-
-# ====================================================================================================
-# === TAB DETALLES ===================================================================================
-# ====================================================================================================
-
-with tabs[4]:
-    # Esta sección permite analizar a fondo los bookings, filtrando por estado ('pagado', 'pendiente'), fechas, etc.
-    st.subheader("📊 Análisis Detallado de Bookings")
-
-    # Filtro por estado
-    estado_filtro = st.multiselect("Estado de reserva", ["pagado", "pendiente"], default=["pagado", "pendiente"])
-
-    # Filtro por mes
-    meses_disponibles = df["Mes"].dropna().sort_values().unique()
-    mes_filtro = st.selectbox("Filtrar por mes", opciones := list(meses_disponibles.astype(str)))
-
-    # Filtrar el DataFrame
-    df_filtrado = df[
-        (df["Estado"].isin(estado_filtro)) &
-        (df["Mes"].astype(str) == mes_filtro)
-    ].copy()
-
-    # Agrupar por propiedad o habitación
-    resumen = df_filtrado.groupby("Habitación")["Precio"].sum().reset_index().sort_values("Precio", ascending=False)
-
-    st.markdown("### 💸 Ingresos por habitación")
-    st.bar_chart(resumen.set_index("Habitación"))
-
-    # Mostrar tabla de reservas filtradas
-    st.markdown("### 📋 Reservas del mes filtrado")
-    st.dataframe(df_filtrado[["Check-in", "Check-out", "Huesped", "Habitación", "Precio", "Estado"]], use_container_width=True)
-
     # ====================================================================================================
 # === TAB EXPANSIÓN ==================================================================================
 # ====================================================================================================
 with tabs[5]:
-    st.markdown("<h2 style='color:#00ffe1;'>🔮 MODO EXPANSIÓN</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='color:#00ffe1;'>🔮 SIMULACIÓN</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#ccc;'>Proyecta el impacto de agregar nuevas habitaciones a tu operación usando datos reales actuales.</p>", unsafe_allow_html=True)
     st.markdown("---")
 
@@ -2263,55 +2488,102 @@ with tabs[5]:
 
    
 
-# === ESCENARIOS DE EXPANSIÓN EN CAJA LUMINOSA ===
-
-    # Proyección para 3 escenarios (1, 2 y 3 nuevas habitaciones)
-    escenarios = [1, 2, 3]
-    beneficios = []
-
-    for n in escenarios:
-        nuevas_ocupaciones = n * dias * ocupacion_actual
-        ingreso_proy = nuevas_ocupaciones * ingreso_diario_promedio
-        gasto_proy = nuevas_ocupaciones * gasto_diario_por_habitacion
-        beneficio = ingreso_proy - gasto_proy
-        beneficios.append(beneficio)
-
-    df_escenarios = pd.DataFrame({
-        "Escenario": [f"{i} Habitación{'es' if i > 1 else ''}" for i in escenarios],
-        "Beneficio neto estimado ($)": beneficios
-    })
-
-    # Crear gráfico horizontal con estilo oscuro
-    chart = alt.Chart(df_escenarios).mark_bar(size=40).encode(
-        y=alt.Y("Escenario:N", title="Expansión simulada", sort="-x"),
-        x=alt.X("Beneficio neto estimado ($):Q", title="$ AUD"),
-        color=alt.value("#00ffe1"),
-        tooltip=[
-            alt.Tooltip("Escenario", title="Escenario"),
-            alt.Tooltip("Beneficio neto estimado ($):Q", title="Beneficio ($)", format=",.2f")
+    # Estado persistente de las habitaciones
+    if "habitaciones_personalizadas" not in st.session_state:
+        st.session_state.habitaciones_personalizadas = [
+            {"nombre": "Room 1", "precio": 60.0, "ocupacion": 80},
+            {"nombre": "Room 2", "precio": 70.0, "ocupacion": 75},
         ]
-    ).properties(
-        height=280,
-        background="#0f1115",
-        title="Proyección de beneficio neto según número de habitaciones nuevas"
-    ).configure_axis(
-        labelColor="#ccc",
-        titleColor="#00ffe1"
-    ).configure_title(
-        color="#00ffe1",
-        anchor="start"
-    ).configure_view(
-        stroke=None
-    )
 
-    # === Contenedor estilo tarjeta luminosa ===
-    st.markdown("""
-    <div style="background-color:#0f1115; padding: 25px 30px; border-radius: 14px; box-shadow: 0 0 25px #00ffe120;">
-    """, unsafe_allow_html=True)
+    # Función para agregar una nueva habitación
+    def agregar_habitacion():
+        n = len(st.session_state.habitaciones_personalizadas) + 1
+        st.session_state.habitaciones_personalizadas.append(
+            {"nombre": f"Room {n}", "precio": 65.0, "ocupacion": 70}
+        )
 
-    st.altair_chart(chart, use_container_width=True)
+    if st.button("➕ Agregar habitación"):
+        agregar_habitacion()
 
-    st.markdown("</div>", unsafe_allow_html=True)
+    # Mostrar formulario editable
+    with st.form("form_simulacion"):
+        cols = st.columns([4, 2, 2])
+        cols[0].markdown("**Habitación**")
+        cols[1].markdown("**Precio por noche ($)**")
+        cols[2].markdown("**Ocupación estimada (%)**")
+
+        for i, habitacion in enumerate(st.session_state.habitaciones_personalizadas):
+            col1, col2, col3 = st.columns([4, 2, 2])
+            habitacion["nombre"] = col1.text_input("Nombre", habitacion["nombre"], key=f"nombre_{i}")
+            habitacion["precio"] = col2.number_input("Precio", 20.0, 300.0, habitacion["precio"], step=1.0, key=f"precio_{i}")
+            habitacion["ocupacion"] = col3.slider("Ocupación", 0, 100, habitacion["ocupacion"], key=f"ocupacion_{i}")
+
+        periodo = st.selectbox("Periodo de análisis", ["Semanal", "Mensual"], index=0)
+        dias = 7 if periodo == "Semanal" else 30
+
+        submitted = st.form_submit_button("🔄 Simular expansión")
+
+    # Cálculo y visualización de resultados
+    if submitted:
+        habitaciones_data = st.session_state.habitaciones_personalizadas
+        gasto_por_habitacion = 25  # Por día por habitación
+
+        ingreso_total = sum(h["precio"] * (h["ocupacion"] / 100) * dias for h in habitaciones_data)
+        gasto_total = gasto_por_habitacion * len(habitaciones_data) * dias
+        beneficio_total = ingreso_total - gasto_total
+        beneficio_pct = (beneficio_total / ingreso_total * 100) if ingreso_total > 0 else 0
+
+        # Estilo de tarjetas
+        st.markdown("""
+        <style>
+        .card-container {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 20px;
+            gap: 20px;
+        }
+        .card {
+            background-color: #111827;
+            padding: 20px;
+            border-radius: 14px;
+            text-align: center;
+            box-shadow: 0 0 15px #00ffe120;
+            flex: 1;
+        }
+        .card-title {
+            color: #ccc;
+            font-size: 14px;
+            margin-bottom: 6px;
+        }
+        .card-value {
+            font-size: 24px;
+            font-weight: bold;
+            color: #00ffe1;
+        }
+        .card-green {
+            color: #10b981;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown(f"""
+        <div class="card-container">
+            <div class="card">
+                <div class="card-title">Ingreso proyectado ({periodo.lower()})</div>
+                <div class="card-value">${ingreso_total:,.2f}</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Gasto proyectado ({periodo.lower()})</div>
+                <div class="card-value">${gasto_total:,.2f}</div>
+            </div>
+            <div class="card">
+                <div class="card-title">Beneficio neto (%)</div>
+                <div class="card-value card-green">{beneficio_pct:.1f}%</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
 
 
 

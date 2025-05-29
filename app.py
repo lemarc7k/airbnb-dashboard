@@ -14,6 +14,7 @@ import altair as alt
 import streamlit.components.v1 as components
 from firebase_config import db
 
+
 # -------- CONTENIDO -------- #
 st.title("Airbnb Property Management Dashboard")
 st.write("Bienvenido al panel de control de propiedades Airbnb. Usa el menú para navegar por los módulos.")
