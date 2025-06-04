@@ -91,6 +91,11 @@ airbnb_dashboard/
 
 streamlit run app.py
 
+##
+
+streamlit cache clear
+streamlit run home.py
+
 ## ✨ INTERPRETE
 
 Presiona Ctrl + Shift + P

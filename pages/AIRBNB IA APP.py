@@ -190,6 +190,8 @@ with tabs[0]:
     import time
     import numpy as np
 
+
+
     # === CALCULAR MÉTRICAS SEMANALES PARA EL MENSAJE DE IA ===
     hoy = pd.Timestamp.now()
     inicio_semana = hoy.to_period("W").start_time
@@ -212,6 +214,8 @@ with tabs[0]:
     gastos_periodo = df_gastos[
         (df_gastos["Fecha"] >= inicio_semana) & (df_gastos["Fecha"] <= fin_semana)
     ]["Monto"].sum()
+
+    
 
     # === BENEFICIO NETO Y PORCENTAJE ===
     beneficio_neto = ingresos - gastos_periodo
@@ -1277,23 +1281,65 @@ with tabs[2]:
     from datetime import datetime
     from firebase_config import db
 
-    @st.cache_data
+    @st.cache_data(ttl=60)
     def cargar_bookings():
         docs = db.collection("bookings").stream()
         data = [doc.to_dict() for doc in docs]
         return pd.DataFrame(data)
+    
+    # Mapa de claves únicas a doc_id
+    doc_ids = {}
+    for doc in db.collection("bookings").stream():
+        data = doc.to_dict()
+        clave = f"{data.get('Huesped')}_{data.get('Habitación')}_{data.get('Check-in')}"
+        doc_ids[clave] = doc.id
+
 
     df = cargar_bookings()
 
 
-    # === DATOS ===
+    # === DATOS Y LIMPIEZA ===
     df["Check-in"] = pd.to_datetime(df["Check-in"], errors="coerce")
     df["Check-out"] = pd.to_datetime(df["Check-out"], errors="coerce")
+    df["Propiedad"] = df["Propiedad"].fillna("Sin asignar").astype(str).str.strip().str.title()
+    df["Habitación"] = df["Habitación"].fillna("Sin asignar").astype(str).str.strip().str.title()
+    df["Huesped"] = df["Huesped"].fillna("Sin nombre").astype(str).str.strip().str.title()
     hoy = pd.to_datetime(datetime.today().date())
 
-    checkins_hoy = df[df["Check-in"].dt.date == hoy.date()]
+    df["Check-in"] = pd.to_datetime(df["Check-in"], errors="coerce")
+    df["Check-out"] = pd.to_datetime(df["Check-out"], errors="coerce")
+
+
+
+
+
+    upcoming = df[
+        (df["Check-in"].notna()) &
+        (df["Check-out"].notna()) &
+        (df["Check-in"].dt.date > hoy.date()) &
+        (df["Check-out"].dt.date > hoy.date())
+    ].sort_values("Check-in")
+
+
+
+
+    
+
+
+    reservas_hoy = df[(df["Check-in"].dt.date <= hoy.date()) & (df["Check-out"].dt.date >= hoy.date())]
     checkouts_hoy = df[df["Check-out"].dt.date == hoy.date()]
-    upcoming = df[df["Check-in"].dt.date > hoy.date()].sort_values("Check-in")
+    ids_hoy = reservas_hoy["Check-in"].astype(str) + reservas_hoy["Huesped"]
+    df["id_unico"] = df["Check-in"].astype(str) + df["Huesped"]
+
+    # Normalizamos propiedad para evitar errores
+    df["Propiedad"] = df["Propiedad"].fillna("Sin asignar").astype(str).str.strip().str.upper()
+
+    
+
+
+
+
+    
 
     # === SESIÓN PARA DETALLE ===
     if "reserva_seleccionada" not in st.session_state:
@@ -1336,6 +1382,10 @@ with tabs[2]:
 
     # === FUNCIÓN PARA TARJETAS EXPANDIBLES ===
     def mostrar_tarjeta_reserva(titulo, subtitulo, avatar_url, key, reserva_dict):
+        # Generamos clave única para acceder al doc_id rápidamente
+        clave_doc = f"{reserva_dict['Huesped']}_{reserva_dict['Habitación']}_{reserva_dict['Check-in']}"
+        doc_id = doc_ids.get(clave_doc)
+
         with st.container():
             st.markdown(f"""
             <div style="background-color:#0f172a; padding:15px 18px; border-radius:16px;
@@ -1351,39 +1401,60 @@ with tabs[2]:
             """, unsafe_allow_html=True)
 
             with st.expander("Ver detalles de esta reserva"):
-                checkin = pd.to_datetime(reserva_dict["Check-in"]).strftime('%d %b %Y')
-                checkout = pd.to_datetime(reserva_dict["Check-out"]).strftime('%d %b %Y')
+                checkin = pd.to_datetime(reserva_dict["Check-in"])
+                checkout = pd.to_datetime(reserva_dict["Check-out"])
 
-                st.markdown(f"""
-                <div style="font-size:16px; line-height:1.8; margin-top:10px;">
-                    <p><b>📍 Propiedad:</b> {reserva_dict['Propiedad']}</p>
-                    <p><b>🛏️ Habitación:</b> {reserva_dict['Habitación']}</p>
-                    <p><b>📅 Check-in:</b> {checkin}</p>
-                    <p><b>📅 Check-out:</b> {checkout}</p>
-                    <p><b>💰 Precio:</b> ${reserva_dict['Precio']:,.2f}</p>
-                    <p><b>🔄 Estado:</b> {reserva_dict['Estado'].capitalize()}</p>
-                </div>
-                """, unsafe_allow_html=True)
+                modo_edicion = st.checkbox("✏️ Editar reserva", key=f"edit-{key}")
 
-                # Buscar y eliminar reserva en Firebase
-                doc_id = None
-                for doc in db.collection("bookings").stream():
-                    data = doc.to_dict()
-                    try:
-                        if (
-                            data.get("Huesped") == reserva_dict.get("Huesped") and
-                            data.get("Habitación") == reserva_dict.get("Habitación") and
-                            pd.to_datetime(data.get("Check-in")).date() == pd.to_datetime(reserva_dict.get("Check-in")).date()
-                        ):
-                            doc_id = doc.id
-                            break
-                    except Exception as e:
-                        st.warning(f"⚠️ Error al buscar coincidencias: {e}")
+                if not modo_edicion:
+                    st.markdown(f"""
+                    <div style="font-size:16px; line-height:1.8; margin-top:10px;">
+                        <p><b>📍 Propiedad:</b> {reserva_dict['Propiedad']}</p>
+                        <p><b>🛏️ Habitación:</b> {reserva_dict['Habitación']}</p>
+                        <p><b>📅 Check-in:</b> {checkin.strftime('%d %b %Y')}</p>
+                        <p><b>📅 Check-out:</b> {checkout.strftime('%d %b %Y')}</p>
+                        <p><b>💰 Precio:</b> ${reserva_dict['Precio']:,.2f}</p>
+                        <p><b>🔄 Estado:</b> {reserva_dict['Estado'].capitalize()}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    nueva_propiedad = st.text_input("📍 Propiedad", value=reserva_dict["Propiedad"], key=f"prop-{key}")
+                    nueva_habitacion = st.text_input("🛏️ Habitación", value=reserva_dict["Habitación"], key=f"hab-{key}")
+                    nuevo_checkin = st.date_input("📅 Check-in", value=checkin.date(), key=f"cin-{key}")
+                    nuevo_checkout = st.date_input("📅 Check-out", value=checkout.date(), key=f"cout-{key}")
+                    nuevo_precio = st.number_input("💰 Precio", value=float(reserva_dict["Precio"]), step=1.0, key=f"precio-{key}")
+                    nuevo_estado = st.selectbox("🔄 Estado", ["pendiente", "pagado"], 
+                                                index=0 if reserva_dict["Estado"] == "pendiente" else 1, key=f"estado-{key}")
 
-                if doc_id and st.button(f"🗑️ Eliminar reserva de {reserva_dict['Huesped']}", key=f"del-{key}"):
-                    db.collection("bookings").document(doc_id).delete()
-                    st.success("✅ Reserva eliminada correctamente.")
-                    st.rerun()
+                    if st.button("💾 Guardar cambios", key=f"save-{key}"):
+                        if doc_id:
+                            try:
+                                db.collection("bookings").document(doc_id).update({
+                                    "Propiedad": nueva_propiedad.strip().title(),
+                                    "Habitación": nueva_habitacion.strip().title(),
+                                    "Check-in": str(nuevo_checkin),
+                                    "Check-out": str(nuevo_checkout),
+                                    "Precio": float(nuevo_precio),
+                                    "Estado": nuevo_estado.lower()
+                                })
+                                st.success("✅ Cambios guardados correctamente.")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Error al guardar: {e}")
+                        else:
+                            st.warning("❌ No se encontró esta reserva en Firestore.")
+                        
+            # Botón eliminar (mantener al final por claridad)
+            if doc_id and st.button(f"🗑️ Eliminar reserva de {reserva_dict['Huesped']}", key=f"del-{key}"):
+                db.collection("bookings").document(doc_id).delete()
+                st.success("✅ Reserva eliminada correctamente.")
+                st.rerun()
+
+
+    # === LIMPIEZA Y NORMALIZACIÓN DE CAMPOS ===
+    df["Propiedad"] = df["Propiedad"].fillna("Sin asignar").astype(str).str.strip().str.title()
+    df["Habitación"] = df["Habitación"].fillna("Sin asignar").astype(str).str.strip().str.title()
+    df["Huesped"] = df["Huesped"].fillna("Sin nombre").astype(str).str.strip().str.title()
 
     # === SECCIONES DE RESERVAS ===
     mostrar_titulo("Hoy")
@@ -1398,27 +1469,43 @@ with tabs[2]:
             reserva_dict=row.to_dict()
         )
 
-    for _, row in checkins_hoy.iterrows():
+    for _, row in reservas_hoy.iterrows():
+        checkin = pd.to_datetime(row["Check-in"])
+        checkout = pd.to_datetime(row["Check-out"])
+        dias_totales = (checkout - checkin).days
+        dias_transcurridos = (hoy - checkin).days
+        dias_restantes = dias_totales - dias_transcurridos
+        texto_estancia = f"{dias_transcurridos} noche/s de {dias_totales} restantes"
+
         mostrar_tarjeta_reserva(
-            f"{row['Huesped']} ⮕ check-in",
+            f"{row['Huesped']} ⮕ {texto_estancia}",
             f"{row['Habitación']} · {row['Propiedad']}",
             f"https://i.pravatar.cc/150?u={row['Huesped']}",
-            key=f"in-{row['Huesped']}-{row['Check-in']}",
+            key=f"hoy-{row['Huesped']}-{row['Check-in']}",
             reserva_dict=row.to_dict()
         )
 
+
+
+    # Agrupamos y mostramos Upcoming por propiedad
     mostrar_titulo("Upcoming")
 
-    for _, row in upcoming.iterrows():
-        checkin = row["Check-in"].strftime("%d %b")
-        checkout = row["Check-out"].strftime("%d %b")
-        mostrar_tarjeta_reserva(
-            f"{checkin} → {checkout}",
-            f"{row['Huesped']} · {row['Habitación']} · {row['Propiedad']}",
-            f"https://i.pravatar.cc/150?u={row['Huesped']}",
-            key=f"upcoming-{row['Huesped']}-{row['Check-in']}",
-            reserva_dict=row.to_dict()
-        )
+    
+    # Agrupar por propiedad
+    for propiedad, grupo in upcoming.groupby("Propiedad"):
+        mostrar_titulo(propiedad, color="#00ffe1", size="20px", margin_top="15px", margin_bottom="8px")
+        
+        for _, row in grupo.iterrows():
+            checkin = row["Check-in"].strftime("%d %b")
+            checkout = row["Check-out"].strftime("%d %b")
+            mostrar_tarjeta_reserva(
+                f"{checkin} → {checkout}",
+                f"{row['Huesped']} · {row['Habitación']} · {row['Propiedad']}",
+                f"https://i.pravatar.cc/150?u={row['Huesped']}",
+                key=f"upcoming-{row['Huesped']}-{row['Check-in']}",
+                reserva_dict=row.to_dict()
+            )
+
 
 
 
@@ -1590,54 +1677,7 @@ with tabs[2]:
         db.collection("bookings").add(datos)
         st.success("✅ Reserva registrada correctamente.")
 
-        # === REGISTRAR GASTOS AUTOMÁTICOS ===
-        huesped_norm = datos.get("Huesped", "").lower().strip()
-        checkin_date = pd.to_datetime(datos.get("Check-in"))
-        propiedad = datos.get("Propiedad", "Sin asignar")
-
-        # --- 1. Gasto variable general ($120 por booking)
-        gasto_existente = db.collection("gastos")\
-            .where("Fecha", "==", checkin_date)\
-            .where("Tipo", "==", "Variable")\
-            .where("Huesped", "==", huesped_norm)\
-            .limit(1)\
-            .stream()
-
-        if not any(gasto_existente):
-            gasto_variable = {
-                "Fecha": checkin_date,
-                "Monto": 120,
-                "Tipo": "Variable",
-                "Categoria": "Variable",
-                "Propiedad": propiedad,
-                "Descripción": f"Gasto variable por booking de {datos.get('Huesped', 'desconocido')}",
-                "Huesped": huesped_norm,
-                "Relacionado": True
-            }
-            db.collection("gastos").add(gasto_variable)
-
-        # --- 2. Gasto de limpieza (si aplica y es mayor a 0)
-        limpieza = datos.get("Limpieza", 0)
-        if limpieza > 0:
-            gasto_limpieza_existente = db.collection("gastos")\
-                .where("Fecha", "==", checkin_date)\
-                .where("Tipo", "==", "Limpieza")\
-                .where("Huesped", "==", huesped_norm)\
-                .limit(1)\
-                .stream()
-
-            if not any(gasto_limpieza_existente):
-                gasto_limpieza = {
-                    "Fecha": checkin_date,
-                    "Monto": limpieza,
-                    "Tipo": "Limpieza",
-                    "Categoria": "Variable",
-                    "Propiedad": propiedad,
-                    "Descripción": f"Limpieza para booking de {datos.get('Huesped', 'desconocido')}",
-                    "Huesped": huesped_norm,
-                    "Relacionado": True
-                }
-                db.collection("gastos").add(gasto_limpieza)
+    
 
 
 
@@ -1907,226 +1947,7 @@ with tabs[3]:
         df_comparado = df_comparado[df_comparado["Periodo"].dt.to_period("M").dt.to_timestamp() == mes_actual]
 
 
-    # === 3. Gráfico Ingresos vs Gastos ===
-    df_melted = df_comparado.melt(
-        id_vars="PeriodoStr",
-        value_vars=["Gastos", "Ingresos"],
-        var_name="Tipo",
-        value_name="Valor"
-    )
 
-    comparativo = alt.Chart(df_melted).mark_line(point=True).encode(
-        x=alt.X("PeriodoStr:N", title="Periodo"),
-        y=alt.Y("Valor:Q", title="Total $AUD"),
-        color=alt.Color("Tipo:N", scale=alt.Scale(domain=["Gastos", "Ingresos"], range=["#e60073", "#10b981"])),
-        tooltip=["PeriodoStr", "Tipo", "Valor"]
-    ).properties(
-        height=300,
-        width="container",
-        title="📊 Ingresos vs Gastos"
-    ).configure_axis(
-        labelColor="#ccc", titleColor="#00ffe1"
-    ).configure_title(color="#00ffe1").configure_view(stroke=None)
-
-    st.altair_chart(comparativo, use_container_width=True)
-
-
-    # === GASTOS VARIABLES AUTOMÁTICOS (SEMANAL + EDITABLE) ===
-    st.markdown("## 🧼 Gastos variables semanales (automáticos y manuales)")
-
-    hoy = pd.Timestamp.today()
-    inicio_semana = hoy.to_period("W").start_time
-    fin_semana = inicio_semana + pd.Timedelta(days=6)
-
-    TARIFA_HORA_STAFF = 30  # Tarifa global para Staff por hora
-
-    # === LIMPIAR DOCUMENTOS INCOMPLETOS (si los hay) ===
-    docs_clean = db.collection("gastos_variables").where("Semana", "==", inicio_semana).stream()
-    for doc in docs_clean:
-        doc_data = doc.to_dict()
-        if "Tipo" in doc_data and "Monto" in doc_data and "Laundry" not in doc_data:
-            db.collection("gastos_variables").document(doc.id).delete()
-
-    # === GENERAR GASTOS VARIABLES DETALLADOS SI NO EXISTEN ===
-    df["Check-out"] = pd.to_datetime(df["Check-out"], errors="coerce")
-    df["Habitación"] = df["Habitación"].fillna("Desconocida")
-    df["Propiedad"] = df["Propiedad"].fillna("No asignada")
-
-    df_semana = df[
-        (df["Check-out"] >= inicio_semana) &
-        (df["Check-out"] <= fin_semana)
-    ]
-
-    for _, row in df_semana.iterrows():
-        habitacion = row.get("Habitación", "Desconocida")
-        propiedad = row.get("Propiedad", "No asignada")
-        fecha_checkout = row["Check-out"]
-
-        existe = db.collection("gastos_variables")\
-            .where("Semana", "==", inicio_semana)\
-            .where("CheckOut", "==", fecha_checkout)\
-            .where("Habitacion", "==", habitacion)\
-            .limit(1).stream()
-
-        if not any(existe):
-            laundry = 20
-            staff_horas_valor = 2.0  # horas reales
-            materiales = 15
-            amenities = 10
-            reposicion = 5
-            transporte = 15
-            total = laundry + (staff_horas_valor * TARIFA_HORA_STAFF) + materiales + amenities + reposicion + transporte
-
-            gasto = {
-                "Semana": inicio_semana,
-                "Propiedad": propiedad,
-                "Habitacion": habitacion,
-                "Laundry": laundry,
-                "StaffHoras": staff_horas_valor,  # ← Correcto
-                "Materiales": materiales,
-                "Amenities": amenities,
-                "Reposicion": reposicion,
-                "Transporte": transporte,
-                "Total": total,
-                "CheckOut": fecha_checkout,
-                "Fuente": "Automático",
-                "Creado": pd.Timestamp.now()
-            }
-            db.collection("gastos_variables").add(gasto)
-
-    # === CARGAR DATOS ACTUALES ===
-    docs_var = db.collection("gastos_variables").where("Semana", "==", inicio_semana).stream()
-    data_var = [doc.to_dict() | {"id": doc.id} for doc in docs_var]
-    df_var = pd.DataFrame(data_var)
-
-    if df_var.empty:
-        st.info("No hay gastos variables registrados para esta semana.")
-    else:
-        columnas_ordenadas = [
-            "Propiedad", "Habitacion", "Laundry", "StaffHoras", "Materiales", "Amenities", "Reposicion", "Transporte", "Total", "Fuente"
-        ]
-
-        # Calcular de nuevo el total para visualizar correctamente
-        df_var["Total"] = (
-            df_var["Laundry"].astype(float) +
-            (df_var["StaffHoras"].astype(float) * TARIFA_HORA_STAFF) +
-            df_var["Materiales"].astype(float) +
-            df_var["Amenities"].astype(float) +
-            df_var["Reposicion"].astype(float) +
-            df_var["Transporte"].astype(float)
-        )
-
-        # Aplicar formato monetario
-        for col in ["Laundry", "Materiales", "Amenities", "Reposicion", "Transporte", "Total"]:
-            df_var[col] = df_var[col].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else "$0.00")
-
-        # Mostrar StaffHoras sin formato monetario
-        df_var["StaffHoras"] = df_var["StaffHoras"].apply(lambda x: f"{x:.1f} h" if pd.notnull(x) else "0.0 h")
-
-        st.dataframe(df_var[columnas_ordenadas], use_container_width=True)
-
-
-    # === NUEVA TABLA: Beneficio neto por período ===
-    st.markdown("## 🧾 Beneficio neto por período")
-
-    # === Cálculo de ingresos diarios proporcional (ya lo tienes correcto arriba) ===
-    df_ingresos_expandido = []
-
-    df_ingresos = obtener_datos()
-    df_ingresos = df_ingresos[df_ingresos["Estado"].str.lower().isin(["pagado", "pendiente"])]
-
-
-    for _, row in df_ingresos.iterrows():
-        start = pd.to_datetime(row["Check-in"])
-        end = pd.to_datetime(row["Check-out"])
-        total_dias = (end - start).days
-        if total_dias <= 0:
-            continue
-        ingreso_diario = row["Precio"] / total_dias
-
-        for i in range(total_dias):
-            dia = start + pd.Timedelta(days=i)
-            if periodo == "Semanal":
-                periodo_dia = dia.to_period("W").start_time
-            elif periodo == "Mensual":
-                periodo_dia = dia.to_period("M").to_timestamp()
-            else:
-                periodo_dia = dia.to_period("Y").to_timestamp()
-
-            df_ingresos_expandido.append({
-                "Periodo": periodo_dia,
-                "Ingreso_dia": ingreso_diario
-            })
-
-    df_ingresos_diarios = pd.DataFrame(df_ingresos_expandido)
-    df_ingresos_grouped = df_ingresos_diarios.groupby("Periodo")["Ingreso_dia"].sum().reset_index()
-    df_ingresos_grouped.columns = ["Periodo", "Ingresos"]
-
-    # === Agrupar gastos ===
-    df_gastos_grouped = df_gastos.groupby("Periodo")["Monto"].sum().reset_index()
-    df_gastos_grouped.columns = ["Periodo", "Gastos"]
-
-    # === Calcular beneficio neto ===
-    df_beneficio = pd.merge(df_ingresos_grouped, df_gastos_grouped, on="Periodo", how="outer").fillna(0)
-    df_beneficio["Beneficio neto"] = df_beneficio["Ingresos"] - df_beneficio["Gastos"]
-
-    # === Calcular porcentaje beneficio neto
-    df_beneficio["% Beneficio neto"] = df_beneficio.apply(
-        lambda row: (row["Beneficio neto"] / row["Ingresos"] * 100) if row["Ingresos"] > 0 else 0,
-        axis=1
-    )
-
-    # === Agregar columna de mes para filtrar
-    df_beneficio["MesFiltro"] = df_beneficio["Periodo"].dt.to_period("M").dt.to_timestamp()
-    meses_disponibles = df_beneficio["MesFiltro"].sort_values(ascending=False).unique()
-    mes_actual = pd.Timestamp.today().to_period("M").to_timestamp()
-
-    # === Filtro de mes
-    mes_seleccionado = st.selectbox("📅 Selecciona el mes:", meses_disponibles, index=list(meses_disponibles).index(mes_actual))
-
-    df_filtrado = df_beneficio[df_beneficio["MesFiltro"] == mes_seleccionado]
-
-    # === Formato de periodo legible
-    if periodo == "Semanal":
-        df_filtrado["PeriodoStr"] = df_filtrado["Periodo"].dt.strftime("%d %b") + " – " + (
-            df_filtrado["Periodo"] + pd.Timedelta(days=6)
-        ).dt.strftime("%d %b")
-    else:
-        df_filtrado["PeriodoStr"] = df_filtrado["Periodo"].dt.strftime({
-            "Mensual": "%b %Y",
-            "Anual": "%Y"
-        }[periodo])
-
-    # Añadir columna de % beneficio neto si hay ingresos
-    df_filtrado["Beneficio %"] = df_filtrado.apply(
-        lambda row: ((row["Beneficio neto"] / row["Ingresos"]) * 100) if row["Ingresos"] > 0 else 0,
-        axis=1
-    )
-
-
-    # === Mostrar tabla final con símbolos y formato ===
-    df_tabla_beneficio = df_filtrado[["PeriodoStr", "Ingresos", "Gastos", "Beneficio neto", "Beneficio %"]].rename(columns={
-        "PeriodoStr": "🗓️ Periodo",
-        "Ingresos": "💰 Ingresos",
-        "Gastos": "🌿 Gastos",
-        "Beneficio neto": "📈 Beneficio neto",
-        "Beneficio %": "📊 % Beneficio neto"
-    })
-
-    # Aplicar formato a moneda y porcentaje
-    df_tabla_beneficio["💰 Ingresos"] = df_tabla_beneficio["💰 Ingresos"].apply(lambda x: f"${x:,.2f}")
-    df_tabla_beneficio["🌿 Gastos"] = df_tabla_beneficio["🌿 Gastos"].apply(lambda x: f"${x:,.2f}")
-    df_tabla_beneficio["📈 Beneficio neto"] = df_tabla_beneficio["📈 Beneficio neto"].apply(lambda x: f"${x:,.2f}")
-    df_tabla_beneficio["📊 % Beneficio neto"] = df_tabla_beneficio["📊 % Beneficio neto"].apply(lambda x: f"{x:.1f}%")
-
-    # Mostrar tabla
-    try:
-        import ace_tools as tools
-        tools.display_dataframe_to_user("📊 Beneficio neto por período", df_tabla_beneficio)
-    except:
-        st.dataframe(df_tabla_beneficio, use_container_width=True)
-
-    st.dataframe(df_var[columnas_ordenadas], use_container_width=True)
 
 
     # === INFOGRAFÍA: Bookings filtrables por período ===
