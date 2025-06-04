@@ -3,7 +3,6 @@ import pandas as pd
 
 st.cache_data.clear()
 
-
 def mostrar_titulo(seccion, color="#00ffe1", size="26px", margin_top="30px", margin_bottom="15px"):
     st.markdown(f"""
     <div style="
@@ -16,6 +15,14 @@ def mostrar_titulo(seccion, color="#00ffe1", size="26px", margin_top="30px", mar
         {seccion}
     </div>
     """, unsafe_allow_html=True)
+
+# Diccionario con imágenes reales por habitación
+imagenes_habitaciones = {
+    "Room 1": "https://i.ibb.co/LhQJfRYf/CBD-room-1.jpg",
+    "Room 2": "https://i.ibb.co/27Nk8R7W/CBD-room-2.jpg",
+    "Garaje": "https://i.ibb.co/Xr5DGZ9R/CBD-garage.jpg",
+    "Room 4": "https://i.ibb.co/k2FrrwMp/IGW-room-4.jpg"
+}
 
 def mostrar_listings(df):
     mostrar_titulo("🏠 Propiedades Activas")
@@ -32,7 +39,6 @@ def mostrar_listings(df):
 
         mostrar_titulo(f"🏡 {propiedad}", size="22px", margin_top="25px")
 
-        # Distribuye en columnas de 3 tarjetas por fila
         cols = st.columns(3)
 
         for i, habitacion in enumerate(habitaciones):
@@ -40,11 +46,14 @@ def mostrar_listings(df):
             reservas = df_hab.shape[0]
             ingresos = df_hab["Precio"].sum()
 
+            # Imagen por habitación, fallback a imagen generada si no está definida
+            imagen_url = imagenes_habitaciones.get(habitacion, f"https://api.dicebear.com/7.x/shapes/svg?seed={habitacion}")
+
             with cols[i % 3]:
                 st.markdown(f"""
                 <div style="background-color:#0f172a; border-radius:16px; 
                             box-shadow:0 0 12px #00ffe110; padding:0; margin-bottom:25px; overflow:hidden;">
-                    <img src="https://api.dicebear.com/7.x/shapes/svg?seed={habitacion}" 
+                    <img src="{imagen_url}" 
                         style="width:100%; height:180px; object-fit:cover; background:#0e172a; border-bottom:1px solid #00ffe120;">
                     <div style="padding:15px;">
                         <h4 style="color:#00ffe1; margin:0 0 8px 0;">🛏️ {habitacion}</h4>

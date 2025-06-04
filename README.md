@@ -90,11 +90,21 @@ airbnb_dashboard/
 .\venv\Scripts\activate
 
 streamlit run app.py
+streamlit run home.py --server.runOnSave true
+
+# Añade todos los archivos modificados
+
+git add .
+
+# Crea un commit con un mensaje descriptivo
+
+git commit -m "Mejoras en Reservas, fix de botones duplicados, e integración Inversión"
+
+# Sube los cambios al repositorio remoto
+
+git push origin main # o el nombre de tu rama si es otra
 
 ##
-
-streamlit cache clear
-streamlit run home.py
 
 ## ✨ INTERPRETE
 
