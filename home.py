@@ -7,15 +7,18 @@ import numpy as np
 from datetime import datetime, timedelta
 from datetime import datetime as dt
 
-from auth import login  # ⬅️ después del set_page_config
-login()  # ⬅️ ejecuta el login justo después de importarlo
+#from auth import login  # ⬅️ después del set_page_config
+#login()  # ⬅️ ejecuta el login justo después de importarlo
 
 # PESTAÑAS 
 from pages.Listings import mostrar_listings  # ✅ CORRECTO
 from pages.Reservas import mostrar_reservas
 from pages.Inversion import mostrar_inversion
 
+
+
 st.cache_data.clear()
+
 
 
 
@@ -290,5 +293,6 @@ with tabs[2]:  # RESERVAS
     mostrar_reservas(df)
 
 with tabs[3]:  # INVERSION
-    mostrar_inversion(df)
+    mostrar_inversion()
+
 

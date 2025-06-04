@@ -1,78 +1,149 @@
 import streamlit as st
 from firebase_config import db
-import pandas as pd
 from datetime import datetime
-import plotly.express as px
+import pandas as pd
 
-st.cache_data.clear()
-
-
-
-def mostrar_inversion(df_bookings):
+def mostrar_inversion():
     st.markdown("""
-        <h2 style='text-align:center; color:#00ffe1;'>💼 Análisis de Inversión</h2>
-        <p style='text-align:center; color:#ccc;'>Gestiona la inversión inicial de cada propiedad y analiza su retorno</p>
-        <hr style='border: 1px solid #00ffe1;'>
+        <h2 style='text-align:center; color:#00ffe1;'>📊 ANÁLISIS DE INVERSIÓN</h2>
+        <p style='text-align:center; color:#aaa;'>Registra aquí la inversión inicial y los gastos fijos mensuales de cada propiedad</p>
     """, unsafe_allow_html=True)
 
-    # =================== FORMULARIO PARA NUEVA INVERSIÓN =====================
-    with st.form("form_inversion"):
-        st.subheader("Registrar nueva inversión")
-        col1, col2 = st.columns(2)
-        with col1:
-            propiedad = st.text_input("🏠 Propiedad")
-        with col2:
-            monto = st.number_input("💰 Monto inversión (AUD)", min_value=0.0, step=100.0)
+    st.markdown("""
+    <style>
+    .card-box {
+        background-color: #0f172a;
+        border: 1px solid #00ffe1;
+        border-radius: 14px;
+        padding: 25px;
+        box-shadow: 0 0 20px #00ffe130;
+        margin-bottom: 30px;
+    }
+    .card-box h4 {
+        color: #00ffe1;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-        descripcion = st.text_area("📝 Descripción (opcional)")
-        fecha = st.date_input("📅 Fecha", value=datetime.today())
+     # === Métricas ===
+    
+    inversiones = db.collection("inversiones").stream()
+    gastos = db.collection("gastos_fijos").stream()
 
-        registrar = st.form_submit_button("✅ Registrar inversión")
+    data_inv = []
+    for x in inversiones:
+        d = x.to_dict()
+        d['id'] = x.id
+        data_inv.append(d)
 
-        if registrar:
-            db.collection("inversiones").add({
-                "Propiedad": propiedad.strip().upper(),
-                "Monto": monto,
-                "Descripcion": descripcion,
-                "Fecha": str(fecha)
-            })
-            st.success("✅ Inversión registrada correctamente.")
+    data_gastos = []
+    for x in gastos:
+        d = x.to_dict()
+        d['id'] = x.id
+        data_gastos.append(d)
 
-    st.markdown("---")
+    df_inv = pd.DataFrame(data_inv)
+    df_gastos = pd.DataFrame(data_gastos)
 
-    # =================== CARGAR INVERSIONES DESDE FIRESTORE =====================
-    inversiones_raw = db.collection("inversiones").stream()
-    inversiones_data = [inv.to_dict() for inv in inversiones_raw]
-    df_inversiones = pd.DataFrame(inversiones_data)
+    if not df_inv.empty:
+        st.markdown("<div class='card-box'>", unsafe_allow_html=True)
+        st.markdown("<h4>📈 Métricas por propiedad</h4>", unsafe_allow_html=True)
 
-    if df_inversiones.empty:
-        st.warning("Aún no se han registrado inversiones.")
-        return
+        propiedades = df_inv["Propiedad"].unique()
+        cols = st.columns(3)
+        for i, prop in enumerate(propiedades):
+            df_inv_prop = df_inv[df_inv["Propiedad"] == prop]
+            df_gastos_prop = df_gastos[df_gastos["Propiedad"] == prop] if not df_gastos.empty and "Propiedad" in df_gastos.columns else pd.DataFrame()
+            inv_total = df_inv_prop["Inversion_total"].sum()
+            fecha_adq = pd.to_datetime(df_inv_prop["Fecha_adquisicion"].values[0])
+            meses_activo = max((datetime.now() - fecha_adq).days // 30, 1)
+            gasto_mensual = df_gastos_prop["Gasto_total"].sum() if not df_gastos_prop.empty else 0.0
+            gasto_acumulado = gasto_mensual * meses_activo
+            total_invertido = inv_total + gasto_acumulado
 
-    # Normalizamos
-    df_inversiones["Fecha"] = pd.to_datetime(df_inversiones["Fecha"], errors="coerce")
-    df_inversiones["Propiedad"] = df_inversiones["Propiedad"].astype(str).str.strip().str.upper()
+            with cols[i % 3]:
+                st.markdown(f"""
+                <div style="background-color:#0f172a; border-radius:16px; box-shadow:0 0 12px #00ffe110;
+                            padding:0; margin-bottom:25px; overflow:hidden;">
+                    <div style="height:180px; background:#0e172a; border-bottom:1px solid #00ffe120;
+                                background-image:url('https://i.ibb.co/LhQJfRYf/CBD-room-1.jpg,{prop}');
+                                background-size:cover; background-position:center;"></div>
+                    <div style="padding:15px;">
+                        <h4 style="color:#00ffe1; margin:0 0 8px 0;">🏡 {prop.upper()}</h4>
+                        <p style="color:#ccc; font-size:13px; margin:0;">
+                            💰 Inversión inicial: ${inv_total:,.2f}<br>
+                            📆 Meses operando: {meses_activo}<br>
+                            🧾 Gastos mensuales: ${gasto_mensual:,.2f}<br>
+                            📉 Acumulado: ${gasto_acumulado:,.2f}<br>
+                            📊 Total invertido: ${total_invertido:,.2f}
+                        </p>
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 
-    # =================== CÁLCULOS DE ROI =====================
-    df_bookings["Propiedad"] = df_bookings["Propiedad"].astype(str).str.strip().str.upper()
-    ingresos_por_prop = df_bookings.groupby("Propiedad")["Precio"].sum().reset_index()
-    inversiones_por_prop = df_inversiones.groupby("Propiedad")["Monto"].sum().reset_index()
+    else:
+        st.warning("⚠️ Aún no hay datos de inversión registrados.")
 
-    df_merged = pd.merge(inversiones_por_prop, ingresos_por_prop, on="Propiedad", how="outer").fillna(0)
-    df_merged["ROI (%)"] = ((df_merged["Precio"] / df_merged["Monto"]) * 100).round(2)
-    df_merged.rename(columns={"Monto": "Inversión (AUD)", "Precio": "Ingresos (AUD)"}, inplace=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    st.markdown("### 📊 Resumen por propiedad")
-    st.dataframe(df_merged, use_container_width=True)
+    # === Formulario combinado ===
+    with st.container():
+        st.markdown("<div class='card-box'>", unsafe_allow_html=True)
+        with st.form("form_inversion_gastos"):
+            st.markdown("<h4>🏠 Inversión + Gastos Fijos</h4>", unsafe_allow_html=True)
+            col1, col2 = st.columns(2)
+            with col1:
+                propiedad = st.text_input("Nombre de la propiedad")
+                monto_inicial = st.number_input("Monto total de inversión (adquisición)", min_value=0.0, step=100.0)
+                fianza = st.number_input("Fianza pagada (Bond)", min_value=0.0, step=50.0)
+                muebles = st.number_input("Muebles y decoración", min_value=0.0, step=50.0)
+                alquiler = st.number_input("Alquiler mensual", min_value=0.0, step=50.0)
+                limpieza = st.number_input("Limpieza mensual", min_value=0.0, step=10.0)
+            with col2:
+                fees = st.number_input("Otros fees (legales, comisiones...)", min_value=0.0, step=50.0)
+                internet = st.number_input("Internet mensual", min_value=0.0, step=10.0)
+                luz = st.number_input("Luz mensual", min_value=0.0, step=10.0)
+                otros = st.number_input("Otros gastos mensuales", min_value=0.0, step=10.0)
+                fecha_adquisicion = st.date_input("Fecha de adquisición")
+                notas = st.text_area("Notas adicionales")
 
-    # =================== GRÁFICO DE RECUPERACIÓN =====================
-    fig = px.bar(df_merged, x="Propiedad", y=["Inversión (AUD)", "Ingresos (AUD)"],
-                 barmode="group", color_discrete_sequence=["#00ffe1", "#1f77b4"],
-                 title="Comparación Inversión vs. Ingresos")
+            registrar = st.form_submit_button("💾 Registrar todo")
 
-    st.plotly_chart(fig, use_container_width=True)
+            if registrar:
+                try:
+                    total_inversion = monto_inicial + fianza + muebles + fees
+                    total_gastos = alquiler + luz + internet + limpieza + otros
+                    fecha_actual = datetime.now().isoformat()
 
-    # =================== HISTORIAL DE INVERSIONES =====================
-    with st.expander("🧾 Ver historial completo de inversiones"):
-        df_inversiones = df_inversiones.sort_values("Fecha", ascending=False)
-        st.dataframe(df_inversiones, use_container_width=True)
+                    # Inversión inicial
+                    db.collection("inversiones").add({
+                        "Propiedad": propiedad,
+                        "Monto_inicial": monto_inicial,
+                        "Fianza": fianza,
+                        "Muebles": muebles,
+                        "Fees": fees,
+                        "Inversion_total": total_inversion,
+                        "Fecha_adquisicion": str(fecha_adquisicion),
+                        "Notas": notas,
+                        "Fecha_registro": fecha_actual
+                    })
+
+                    # Gastos fijos
+                    db.collection("gastos_fijos").add({
+                        "Propiedad": propiedad,
+                        "Alquiler": alquiler,
+                        "Luz": luz,
+                        "Internet": internet,
+                        "Limpieza": limpieza,
+                        "Otros": otros,
+                        "Gasto_total": total_gastos,
+                        "Fecha_registro": fecha_actual
+                    })
+
+                    st.success("✅ Datos registrados correctamente")
+                except Exception as e:
+                    st.error(f"❌ Error: {e}")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+   

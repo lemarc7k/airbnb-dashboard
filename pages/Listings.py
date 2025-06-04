@@ -37,7 +37,7 @@ def mostrar_listings(df):
         df_prop = df[df["Propiedad"] == propiedad]
         habitaciones = df_prop["Habitación"].dropna().unique()
 
-        mostrar_titulo(f"🏡 {propiedad}", size="22px", margin_top="25px")
+        mostrar_titulo(f"🏡 {propiedad.upper()}", size="22px", margin_top="25px")
 
         cols = st.columns(3)
 
