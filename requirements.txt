@@ -13,3 +13,5 @@ numpy
 streamlit-js-eval
 streamlit-autorefresh
 seaborn
+plotly
+
