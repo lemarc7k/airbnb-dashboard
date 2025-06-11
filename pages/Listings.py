@@ -62,7 +62,7 @@ def mostrar_listings(df):
                         <h4 style="color:#00ffe1; margin:0 0 8px 0;">🛏️ {habitacion}</h4>
                         <p style="color:#aaa; margin:0 0 4px 0;">📍 {propiedad}</p>
                         <p style="color:#ccc; font-size:13px; margin:0;">
-                            📅 {reservas} reservas · 💰 ${ingresos:,.2f}
+                            {reservas} reservas · ${ingresos:,.2f}
                         </p>
                     </div>
                 </div>
