@@ -20,7 +20,7 @@ def mostrar_titulo(seccion, color="#00ffe1", size="26px", margin_top="30px", mar
 imagenes_habitaciones = {
     "Room 1": "https://i.ibb.co/LhQJfRYf/CBD-room-1.jpg",
     "Room 2": "https://i.ibb.co/27Nk8R7W/CBD-room-2.jpg",
-    "Garaje": "https://i.ibb.co/Xr5DGZ9R/CBD-garage.jpg",
+    "Garaje": "https://i.ibb.co/tpv3Tvwg/asdad.jpg",
     "Room 4": "https://i.ibb.co/k2FrrwMp/IGW-room-4.jpg"
 }
 

@@ -67,22 +67,26 @@ from firebase_config import db
 # === CARGAR BOOKINGS DE FIRESTORE CON ID ===
 #@st.cache_data(ttl=60)
 def cargar_bookings():
-    try:
-        docs = db.collection("bookings").stream()
-        data = []
-        doc_ids = {}
-        for doc in docs:
-            row = doc.to_dict()
-            clave = f"{row.get('Huesped')}_{row.get('Habitación')}_{row.get('Check-in')}"
-            doc_ids[clave] = doc.id
-            data.append(row)
-        return pd.DataFrame(data), doc_ids
-    except Exception as e:
-        st.error(f"❌ Error al cargar datos de Firestore: {e}")
-        return pd.DataFrame(), {}
+    bookings_ref = db.collection("bookings").stream()
+    data = []
+    doc_ids = {}
+
+    for doc in bookings_ref:
+        reserva = doc.to_dict()
+        reserva["doc_id"] = doc.id  # ✅ Incluimos el ID en el dict
+        data.append(reserva)
+
+    df = pd.DataFrame(data)
+    return df
+
 
 # === USO ===
-df, doc_ids = cargar_bookings()
+df = cargar_bookings()
+
+# Inicialización segura del estado
+if "edit_id" not in st.session_state:
+    st.session_state["edit_id"] = None
+
 
 # === LIMPIEZA Y FORMATO DE DATOS ===
 def limpiar_dataframe(df):
@@ -114,6 +118,7 @@ checkouts_hoy = df[df["Check-out"].dt.date == hoy.date()]
 
 
 with tabs[0]:  # LISTINGS
+    
 
     # === ENCABEZADO ===
     st.markdown("<h2 style='text-align:center; color:#00ffe1;'>BIENVENIDO MR VERA</h2>", unsafe_allow_html=True)
@@ -161,9 +166,9 @@ with tabs[0]:  # LISTINGS
 
     # === FUNCIÓN PARA TARJETAS EXPANDIBLES ===
     def mostrar_tarjeta_reserva(titulo, subtitulo, avatar_url, key, reserva_dict):
-        # Generamos clave única para acceder al doc_id rápidamente
-        clave_doc = f"{reserva_dict['Huesped']}_{reserva_dict['Habitación']}_{reserva_dict['Check-in']}"
-        doc_id = doc_ids.get(clave_doc)
+        # Obtenemos el doc_id directamente desde el diccionario de la reserva
+        doc_id = reserva_dict.get("doc_id")
+
 
         with st.container():
             st.markdown(f"""
@@ -183,7 +188,7 @@ with tabs[0]:  # LISTINGS
                 checkin = pd.to_datetime(reserva_dict["Check-in"])
                 checkout = pd.to_datetime(reserva_dict["Check-out"])
 
-                modo_edicion = st.checkbox("✏️ Editar reserva", key=f"edit-{key}")
+                modo_edicion = st.checkbox("✏️ Editar reserva", key=f"edit-{doc_id}")
 
                 if not modo_edicion:
                     st.markdown(f"""
@@ -197,13 +202,15 @@ with tabs[0]:  # LISTINGS
                     </div>
                     """, unsafe_allow_html=True)
                 else:
-                    nueva_propiedad = st.text_input("📍 Propiedad", value=reserva_dict["Propiedad"], key=f"prop-{key}")
-                    nueva_habitacion = st.text_input("🛏️ Habitación", value=reserva_dict["Habitación"], key=f"hab-{key}")
-                    nuevo_checkin = st.date_input("📅 Check-in", value=checkin.date(), key=f"cin-{key}")
-                    nuevo_checkout = st.date_input("📅 Check-out", value=checkout.date(), key=f"cout-{key}")
-                    nuevo_precio = st.number_input("💰 Precio", value=float(reserva_dict["Precio"]), step=1.0, key=f"precio-{key}")
+                    nueva_propiedad = st.text_input("📍 Propiedad", value=reserva_dict["Propiedad"], key=f"prop-{doc_id}")
+                    nueva_habitacion = st.text_input("🛏️ Habitación", value=reserva_dict["Habitación"], key=f"hab-{doc_id}")
+                    nuevo_checkin = st.date_input("📅 Check-in", value=checkin.date(), key=f"cin-{doc_id}")
+                    nuevo_checkout = st.date_input("📅 Check-out", value=checkout.date(), key=f"cout-{doc_id}")
+                    nuevo_precio = st.number_input("💰 Precio", value=float(reserva_dict["Precio"]), step=1.0, key=f"precio-{doc_id}")
+                    nuevo_huesped = st.text_input("👤 Huésped", value=reserva_dict["Huesped"], key=f"huesped-{doc_id}")
                     nuevo_estado = st.selectbox("🔄 Estado", ["pendiente", "pagado"], 
-                                                index=0 if reserva_dict["Estado"] == "pendiente" else 1, key=f"estado-{key}")
+                                                index=0 if reserva_dict["Estado"] == "pendiente" else 1, key=f"estado-{doc_id}")
+
 
                     if st.button("💾 Guardar cambios", key=f"save-{key}"):
                         if doc_id:
@@ -214,6 +221,7 @@ with tabs[0]:  # LISTINGS
                                     "Check-in": str(nuevo_checkin),
                                     "Check-out": str(nuevo_checkout),
                                     "Precio": float(nuevo_precio),
+                                    "Huesped": nuevo_huesped.strip().title(),
                                     "Estado": nuevo_estado.lower()
                                 })
                                 st.success("✅ Cambios guardados correctamente.")
@@ -223,11 +231,45 @@ with tabs[0]:  # LISTINGS
                         else:
                             st.warning("❌ No se encontró esta reserva en Firestore.")
                         
-            # Botón eliminar (mantener al final por claridad)
-            if doc_id and st.button(f"🗑️ Eliminar reserva de {reserva_dict['Huesped']}", key=f"del-{key}"):
-                db.collection("bookings").document(doc_id).delete()
-                st.success("✅ Reserva eliminada correctamente.")
-                st.rerun()
+                # --- ELIMINACIÓN DENTRO DEL FORMULARIO ---
+                st.markdown("""
+                    <style>
+                    .delete-box {
+                        margin-top: 20px;
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }
+                    .delete-btn {
+                        background-color: transparent;
+                        color: #ff4d4f;
+                        border: 1px solid #ff4d4f;
+                        padding: 6px 14px;
+                        border-radius: 10px;
+                        font-weight: 500;
+                        transition: all 0.25s ease;
+                        font-size: 14px;
+                    }
+                    .delete-btn:hover {
+                        background-color: #ff4d4f22;
+                        box-shadow: 0 0 10px #ff4d4f66;
+                        cursor: pointer;
+                    }
+                    </style>
+                """, unsafe_allow_html=True)
+
+                with st.container():
+                    st.markdown('<div class="delete-box">', unsafe_allow_html=True)
+                    confirmar = st.checkbox("🗑️ Eliminar reserva", key=f"confirmar-{doc_id}")
+                    if confirmar and doc_id:
+                        eliminar = st.button("🗑️ Eliminar reserva", key=f"del-{doc_id}")
+                        if eliminar:
+                            db.collection("bookings").document(doc_id).delete()
+                            st.success("✅ Reserva eliminada correctamente.")
+                            st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+
 
 
     # === LIMPIEZA Y NORMALIZACIÓN DE CAMPOS ===
@@ -254,7 +296,7 @@ with tabs[0]:  # LISTINGS
         dias_totales = (checkout - checkin).days
         dias_transcurridos = (hoy - checkin).days
         dias_restantes = dias_totales - dias_transcurridos
-        texto_estancia = f"{dias_transcurridos} noche/s de {dias_totales} restantes"
+        texto_estancia = f"{dias_transcurridos} de {dias_totales} totales"
 
         mostrar_tarjeta_reserva(
             f"{row['Huesped']} ⮕ {texto_estancia}",
