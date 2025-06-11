@@ -102,7 +102,34 @@ def mostrar_reservas(df):
                 ciudad = st.text_input("Ciudad de residencia")
             with col2:
                 telefono = st.text_input("Teléfono")
-                paises_populares = sorted(["Australia", "España", "México", "Colombia", "Argentina", "Chile", "Perú", "Otros"])
+                paises_populares = sorted([
+                # América
+                "Argentina", "Bolivia", "Brasil", "Canadá", "Chile", "Colombia", "Costa Rica", "Cuba", "Ecuador",
+                "El Salvador", "Estados Unidos", "Guatemala", "Honduras", "México", "Nicaragua", "Panamá",
+                "Paraguay", "Perú", "República Dominicana", "Uruguay", "Venezuela",
+
+                # Europa
+                "Alemania", "Austria", "Bélgica", "Bulgaria", "Croacia", "Dinamarca", "Eslovaquia", "Eslovenia",
+                "España", "Estonia", "Finlandia", "Francia", "Grecia", "Hungría", "Irlanda", "Islandia", "Italia",
+                "Letonia", "Lituania", "Noruega", "Países Bajos", "Polonia", "Portugal", "Reino Unido",
+                "República Checa", "Rumanía", "Suecia", "Suiza", "Ucrania",
+
+                # Asia
+                "Arabia Saudita", "Bangladés", "Camboya", "China", "Corea del Sur", "Emiratos Árabes Unidos",
+                "Filipinas", "India", "Indonesia", "Irak", "Irán", "Israel", "Japón", "Jordania", "Kazajistán",
+                "Kuwait", "Laos", "Líbano", "Malasia", "Mongolia", "Nepal", "Pakistán", "Qatar", "Singapur",
+                "Sri Lanka", "Tailandia", "Turquía", "Uzbekistán", "Vietnam",
+
+                # Oceanía
+                "Australia", "Fiyi", "Nueva Zelanda", "Papúa Nueva Guinea", "Samoa",
+
+                # África
+                "Argelia", "Angola", "Camerún", "Egipto", "Etiopía", "Ghana", "Kenia", "Marruecos",
+                "Nigeria", "Senegal", "Sudáfrica", "Tanzania", "Túnez", "Uganda", "Zimbabue",
+
+                # Otros
+                "Otros"
+            ])
                 pais = st.selectbox("País de origen", paises_populares)
                 sexo = st.selectbox("Sexo", ["Masculino", "Femenino", "Otro", "Prefiero no decir"])
 

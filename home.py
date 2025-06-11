@@ -14,6 +14,7 @@ from datetime import datetime as dt
 from pages.Listings import mostrar_listings  # ✅ CORRECTO
 from pages.Reservas import mostrar_reservas
 from pages.Inversion import mostrar_inversion
+from pages.Calendario import mostrar_calendario
 
 
 
@@ -296,7 +297,7 @@ with tabs[0]:  # LISTINGS
         dias_totales = (checkout - checkin).days
         dias_transcurridos = (hoy - checkin).days
         dias_restantes = dias_totales - dias_transcurridos
-        texto_estancia = f"{dias_transcurridos} de {dias_totales} totales"
+        texto_estancia = f"{dias_transcurridos} días de {dias_totales} totales"
 
         mostrar_tarjeta_reserva(
             f"{row['Huesped']} ⮕ {texto_estancia}",
@@ -337,4 +338,5 @@ with tabs[2]:  # RESERVAS
 with tabs[3]:  # INVERSION
     mostrar_inversion()
 
-
+with tabs[4]:   # CALENDARIO
+    mostrar_calendario(df)

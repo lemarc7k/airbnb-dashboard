@@ -16,13 +16,16 @@ def mostrar_titulo(seccion, color="#00ffe1", size="26px", margin_top="30px", mar
     </div>
     """, unsafe_allow_html=True)
 
-# Diccionario con imágenes reales por habitación
 imagenes_habitaciones = {
-    "Room 1": "https://i.ibb.co/LhQJfRYf/CBD-room-1.jpg",
-    "Room 2": "https://i.ibb.co/27Nk8R7W/CBD-room-2.jpg",
-    "Garaje": "https://i.ibb.co/tpv3Tvwg/asdad.jpg",
-    "Room 4": "https://i.ibb.co/k2FrrwMp/IGW-room-4.jpg"
+    "Room 1": "https://i.ibb.co/LhQJfRYf/CBD-room-1.jpg", # Añadido
+    "Room 2": "https://i.ibb.co/27Nk8R7W/CBD-room-2.jpg", # Añadido
+    "Room 3": "https://i.ibb.co/Fb8kX2XH/GUIDEBOOK-PORTADA.jpg",  # Añadido
+    "Room 4": "https://i.ibb.co/k2FrrwMp/IGW-room-4.jpg", # Añadido
+    "Room 5": "https://i.ibb.co/PM2xKyG/CBD-room-5.jpg",  # Añadido
+    "Garaje": "https://i.ibb.co/tpv3Tvwg/asdad.jpg", # Añadido
+    "Garaje 2": "https://i.ibb.co/N2g3ztNx/garaje-2.jpg"  # Añadido
 }
+
 
 def mostrar_listings(df):
     mostrar_titulo("🏠 Propiedades Activas")

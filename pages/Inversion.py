@@ -11,7 +11,7 @@ if "edit_id" not in st.session_state:
 imagenes_propiedades = {
     "CBD": "https://i.ibb.co/LhQJfRYf/CBD-room-1.jpg",
     "INGLEWOOD": "https://i.ibb.co/k2FrrwMp/IGW-room-4.jpg",
-    "GARAJE": "https://i.ibb.co/Xr5DGZ9R/CBD-garage.jpg",
+    "GARAJE": "https://i.ibb.co/Xr5DGZ9/CBD-garage.jpg",
 }
 
 def mostrar_inversion():
@@ -31,32 +31,6 @@ def mostrar_inversion():
         .formulario-box h3 {
             color: #00ffe1;
             margin-bottom: 20px;
-        }
-        .card-actions {
-            display: flex;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 10px;
-        }
-        .icon-button {
-            background-color: #0f172a;
-            border: 1px solid #00ffe1;
-            border-radius: 12px;
-            padding: 0.4rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 18px;
-            color: #00ffe1;
-            width: 38px;
-            height: 38px;
-            transition: all 0.2s ease-in-out;
-            box-shadow: 0 0 8px #00ffe140;
-        }
-        .icon-button:hover {
-            background-color: #00ffe110;
-            transform: scale(1.07);
-            box-shadow: 0 0 12px #00ffe180;
         }
         </style>
     """, unsafe_allow_html=True)
@@ -170,31 +144,40 @@ def mostrar_cards_inversiones():
 
         imagen_url = imagenes_propiedades.get(prop.upper(), f"https://api.dicebear.com/7.x/shapes/svg?seed={prop}")
         fianza = inv.get("Fianza", 0.0)
-        luz = gastos.get("Luz", 0.0)
-        internet = gastos.get("Internet", 0.0)
         renta_mensual = gastos.get("Alquiler", 0.0)
-        localizacion = inv.get('Localizacion', 'Sin info')
 
         with cols[i % 3]:
             with st.form(f"form_{inv['id']}", clear_on_submit=False):
                 st.markdown(f"""
-                    <div style="background-color:#0f172a; border-radius:16px;
-                                box-shadow:0 0 12px #00ffe120; overflow:hidden; margin-bottom:12px;
-                                position:relative;">
-                        <img src="{imagen_url}" style="width:100%; height:180px; object-fit:cover; border-top-left-radius:16px; border-top-right-radius:16px;">
-                        <div style="padding:15px;">
-                            <h4 style="color:#00ffe1; margin-bottom:6px;">🛏️ {prop}</h4>
-                            <p style="color:#aaa; margin:0;">📍 {localizacion}</p>
-                            <p style="color:#ccc; font-size:13px; margin:4px 0 0 0;">
-                                💵 Renta mensual: ${renta_mensual:,.2f}<br>
-                                🔐 Fianza: ${fianza:,.2f}<br>
-                                💡 Luz: ${luz:,.2f}<br>
-                                🌐 Internet: ${internet:,.2f}
-                            </p>
-                            <div class="card-actions" style="margin-top:10px; display:flex; gap:12px;">
-                                <button type="submit" name="action" value="ver" class="icon-button" title="Ver detalles">🔍</button>
-                                <button type="submit" name="action" value="editar" class="icon-button" title="Editar">✏️</button>
-                                <button type="submit" name="action" value="eliminar" class="icon-button" title="Eliminar">🗑️</button>
+                    <div style="background-color:#0f172a; border-radius:16px; box-shadow:0 0 16px #00ffe130; overflow:hidden;">
+                        <div style="display:flex; flex-direction:column;">
+                            <img src="{imagen_url}" style="width:100%; height:160px; object-fit:cover;">
+                            <div style="padding:15px;">
+                                <h4 style="color:#ffffff; font-size:20px; margin:0 0 10px 0;">{prop}</h4>
+                                <div style="display:flex; justify-content:space-around; flex-wrap:wrap; gap:12px; font-size:14px; color:#ccc; margin-top:12px;">
+                                    <div style="text-align:center;">
+                                        <b>Fianza</b><br>$500
+                                    </div>
+                                    <div style="text-align:center;">
+                                        <b>Renta mensual</b><br>$2,800
+                                    </div>
+                                    <div style="text-align:center;">
+                                        <b>Electricidad</b><br>$100
+                                    </div>
+                                    <div style="text-align:center;">
+                                        <b>Internet</b><br>$50
+                                    </div>
+                                    <div style="text-align:center;">
+                                        <b>Otros</b><br>$80
+                                    </div>
+                                    <div style="text-align:center; color:#00ffe1;">
+                                        <b>Gasto total</b><br>$3,030
+                                    </div>
+                                </div>
+                                <div style="margin-top:15px; display:flex; justify-content:center; gap:10px;">
+                                    <button type="submit" name="action" value="editar" title="Editar" style="background:transparent; border:1px solid #00ffe1; color:#00ffe1; border-radius:8px; padding:6px 10px;">✏️</button>
+                                    <button type="submit" name="action" value="eliminar" title="Eliminar" style="background:transparent; border:1px solid #ff4d4f; color:#ff4d4f; border-radius:8px; padding:6px 10px;">🗑️</button>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -206,14 +189,7 @@ def mostrar_cards_inversiones():
                 else:
                     action = st.session_state.get(f"form_{inv['id']}_action")
 
-                if action == "ver":
-                    with st.expander("🔎 Detalles de la inversión"):
-                        st.write("**Inversión total:** $", inv.get("Inversion_total", 0.0))
-                        st.write("**Monto inicial:** $", inv.get("Monto_inicial", 0.0))
-                        st.write("**Fianza:** $", inv.get("Fianza", 0.0))
-                        st.write("**Muebles:** $", inv.get("Muebles", 0.0))
-                        st.write("**Notas:**", inv.get("Notas", "Sin notas"))
-                elif action == "editar":
+                if action == "editar":
                     st.session_state.edit_id = inv["id"]
                     st.rerun()
                 elif action == "eliminar":
