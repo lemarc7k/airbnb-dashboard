@@ -31,7 +31,7 @@ from pages.Inversion import mostrar_inversion
 from pages.Calendario import mostrar_calendario
 
 # === CARGA CENTRALIZADA CON CACHÉ ===
-@st.cache_data(ttl=300)  # Cache por 5 minutos
+@st.cache_data(ttl=0)  # Sin caché, siempre recarga desde Firebase
 def cargar_datos_firebase():
     def fetch(col):
         docs = db.collection(col).stream()
@@ -306,7 +306,7 @@ with tabs[1]:  # LISTINGS
     mostrar_listings(df_bookings)
 
 with tabs[2]:  # RESERVAS
-    mostrar_reservas(df_reservas)
+    mostrar_reservas(df_bookings)
 
 with tabs[3]:  # INVERSION
     mostrar_inversion(df_inversiones, df_gastos, df_reservas)

@@ -179,6 +179,10 @@ def mostrar_reservas(df):
             }
             db.collection("bookings").add(datos)
             st.success("✅ Reserva registrada correctamente.")
+            st.cache_data.clear()
+            st.rerun()
+
+
 
     # Últimas reservas como cards
     st.markdown("---")

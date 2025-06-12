@@ -59,9 +59,11 @@ def mostrar_calendario(df):
     })
 
     df_gantt["Tooltip"] = df_gantt.apply(
-        lambda r: f"{r['Huesped']} – ${r['Precio'] * ((r['Check-out'] - r['Check-in']).days):,.0f}",
+        lambda r: f"{r['Huesped']} – ${r['Precio']:,.0f}",
         axis=1
     )
+
+
 
     color_map = {
         "Pagado": "#008489",     # Verde Airbnb
@@ -88,7 +90,7 @@ def mostrar_calendario(df):
 
 
     for _, r in df_gantt.iterrows():
-        precio_total = r["Precio"] * ((r["Check-out"] - r["Check-in"]).days)
+        precio_total = r["Precio"]
         fig.add_annotation(
             x=r["Check-in"] + (r["Check-out"] - r["Check-in"]) / 2,
             y=r["Linea"],
