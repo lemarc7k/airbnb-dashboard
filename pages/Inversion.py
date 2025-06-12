@@ -1,212 +1,334 @@
 import streamlit as st
+import pandas as pd
 from firebase_config import db
 from datetime import datetime
-import pandas as pd
+import streamlit.components.v1 as components
+import plotly.express as px
 
-st.cache_data.clear()
+# ========================
+# CARGA EFICIENTE CON CACHÉ
+# ========================
+@st.cache_data(ttl=60)
+def cargar_inversiones():
+    inversiones = []
+    for x in db.collection("inversiones").stream():
+        d = x.to_dict()
+        d["doc_id"] = x.id
+        inversiones.append(d)
+    return inversiones
 
-if "edit_id" not in st.session_state:
-    st.session_state.edit_id = None
+@st.cache_data(ttl=60)
+def cargar_gastos():
+    gastos = []
+    for x in db.collection("gastos_fijos").stream():
+        d = x.to_dict()
+        d["doc_id"] = x.id
+        gastos.append(d)
+    return gastos
 
-imagenes_propiedades = {
-    "CBD": "https://i.ibb.co/LhQJfRYf/CBD-room-1.jpg",
-    "INGLEWOOD": "https://i.ibb.co/k2FrrwMp/IGW-room-4.jpg",
-    "GARAJE": "https://i.ibb.co/Xr5DGZ9/CBD-garage.jpg",
-}
+@st.cache_data(ttl=60)
+def cargar_reservas():
+    reservas = []
+    for x in db.collection("reservas").stream():
+        reservas.append(x.to_dict())
+    return reservas
 
+
+# ========================
+# PANEL DE INVERSIÓN
+# ========================
 def mostrar_inversion():
-    mostrar_cards_inversiones()
-
     st.markdown("""
         <style>
-        .formulario-box {
+        .metric-card {
             background-color: #0f1115;
             border: 1px solid #00ffe1;
             border-radius: 14px;
-            padding: 30px;
+            padding: 25px;
             font-family: 'Segoe UI', sans-serif;
-            color: #ccc;
+            color: white;
             box-shadow: 0 0 20px #00ffe130;
+            text-align: center;
         }
-        .formulario-box h3 {
+        .metric-card h3 {
+            margin: 0;
+            font-size: 16px;
+            color: #ccc;
+        }
+        .metric-card p {
+            margin: 5px 0 0;
+            font-size: 22px;
+            font-weight: bold;
             color: #00ffe1;
-            margin-bottom: 20px;
         }
         </style>
     """, unsafe_allow_html=True)
 
-    with st.container():
-        st.markdown("""
-        <div class="formulario-box">
-            <h3>REGISTRAR INVERSIÓN</h3>
-        </div>
-        """, unsafe_allow_html=True)
+    # === FORMULARIO PARA NUEVA INVERSIÓN ===
+    with st.expander("➕ Registrar Nueva Inversión"):
+        with st.form("form_inversion"):
+            st.subheader("📍 Datos de la Inversión")
+            col1, col2 = st.columns(2)
+            with col1:
+                propiedad = st.text_input("🏠 Propiedad")
+                monto_inicial = st.number_input("💰 Monto Inicial (AUD)", min_value=0.0, step=100.0)
+                fianza = st.number_input("🔒 Fianza (AUD)", min_value=0.0, step=100.0)
+            with col2:
+                muebles = st.number_input("🛋️ Muebles (AUD)", min_value=0.0, step=100.0)
+                fecha = st.date_input("📅 Fecha", value=datetime.today())
 
-    if st.session_state.edit_id:
-        doc_ref = db.collection("inversiones").document(st.session_state.edit_id).get()
-        inv_data = doc_ref.to_dict()
-        if inv_data:
-            st.markdown(f"<p style='color:#00ffe1;'>🛠 Editando inversión: {inv_data['Propiedad']}</p>", unsafe_allow_html=True)
-        else:
-            st.session_state.edit_id = None
-            st.warning("❗ Esta inversión fue eliminada o no existe.")
-            st.rerun()
-    else:
-        inv_data = {}
+            st.markdown("---")
+            st.subheader("🧾 Gastos Fijos Mensuales")
+            col3, col4 = st.columns(2)
+            with col3:
+                renta = st.number_input("🏡 Alquiler mensual", min_value=0.0, step=10.0)
+                luz = st.number_input("💡 Electricidad", min_value=0.0, step=10.0)
+            with col4:
+                agua = st.number_input("🚿 Agua", min_value=0.0, step=10.0)
+                internet = st.number_input("🌐 Internet", min_value=0.0, step=10.0)
 
-    with st.form("formulario_inversion"):
-        col1, col2 = st.columns(2)
-        with col1:
-            propiedad = st.text_input("Propiedad", value=inv_data.get("Propiedad", "")).strip()
-            fecha_adq = st.date_input("Fecha de adquisición", value=pd.to_datetime(inv_data.get("Fecha_adquisicion", datetime.today())))
-            localizacion = st.text_input("Localización", value=inv_data.get("Localizacion", "")).strip()
-        with col2:
-            precio_adquisicion = st.number_input("Precio de adquisición", min_value=0.0, step=100.0, value=inv_data.get("Monto_inicial", 0.0))
-            fianza = st.number_input("Fianza pagada", min_value=0.0, step=50.0, value=inv_data.get("Fianza", 0.0))
-            renta_semanal = st.number_input("Renta semanal estimada", min_value=0.0, step=10.0)
+            submit = st.form_submit_button("✅ Registrar Inversión + Gastos")
+            if submit and propiedad:
+                nombre_prop = propiedad.strip().title()
 
-        col3, col4 = st.columns(2)
-        with col3:
-            decoracion = st.number_input("Muebles y decoración", min_value=0.0, step=50.0, value=inv_data.get("Muebles", 0.0))
-            luz = st.number_input("Electricidad mensual", min_value=0.0, step=10.0)
-        with col4:
-            internet = st.number_input("Internet mensual", min_value=0.0, step=10.0)
-            otros = st.number_input("Otros gastos fijos", min_value=0.0, step=10.0)
-
-        notas = st.text_area("Notas o comentarios extra", value=inv_data.get("Notas", ""))
-        submit = st.form_submit_button("💾 Guardar Inversión")
-
-    if submit:
-        if not propiedad or precio_adquisicion == 0:
-            st.error("❌ Por favor completa todos los campos obligatorios.")
-        else:
-            try:
-                total_inversion = precio_adquisicion + fianza + decoracion
-                gasto_mensual = luz + internet + otros
-                fecha_actual = datetime.now().isoformat()
-
-                datos_inversion = {
-                    "Propiedad": propiedad,
-                    "Monto_inicial": precio_adquisicion,
+                db.collection("inversiones").add({
+                    "Propiedad": nombre_prop,
+                    "Monto_inicial": monto_inicial,
                     "Fianza": fianza,
-                    "Muebles": decoracion,
-                    "Fees": 0.0,
-                    "Inversion_total": total_inversion,
-                    "Fecha_adquisicion": str(fecha_adq),
-                    "Localizacion": localizacion,
-                    "Notas": notas,
-                    "Fecha_registro": fecha_actual
-                }
+                    "Muebles": muebles,
+                    "Fecha": str(fecha)
+                })
 
-                if st.session_state.edit_id:
-                    db.collection("inversiones").document(st.session_state.edit_id).set(datos_inversion)
-                    st.success("✅ Inversión actualizada correctamente.")
-                    st.session_state.edit_id = None
-                else:
-                    db.collection("inversiones").add(datos_inversion)
-                    db.collection("gastos_fijos").add({
-                        "Propiedad": propiedad,
-                        "Alquiler": renta_semanal * 4,
-                        "Luz": luz,
-                        "Internet": internet,
-                        "Limpieza": 0.0,
-                        "Otros": otros,
-                        "Gasto_total": gasto_mensual,
-                        "Fecha_registro": fecha_actual
-                    })
-                    st.success("✅ Inversión registrada correctamente.")
+                db.collection("gastos_fijos").add({
+                    "Propiedad": nombre_prop,
+                    "Alquiler": renta,
+                    "Luz": luz,
+                    "Agua": agua,
+                    "Internet": internet
+                })
 
+                st.success("✅ Inversión y gastos registrados correctamente.")
                 st.rerun()
 
-            except Exception as e:
-                st.error(f"❌ Error al registrar: {e}")
-
-def mostrar_cards_inversiones():
-    inversiones_ref = db.collection("inversiones").stream()
-    gastos_ref = db.collection("gastos_fijos").stream()
-
-    data_inv = [dict(x.to_dict(), id=x.id) for x in inversiones_ref]
-    data_gastos = [dict(x.to_dict(), id=x.id) for x in gastos_ref]
+    # === CARGA DE DATOS OPTIMIZADA ===
+    data_inv = cargar_inversiones()
+    data_res = cargar_reservas()
+    data_gas = cargar_gastos()
 
     df_inv = pd.DataFrame(data_inv)
-    df_gastos = pd.DataFrame(data_gastos)
+    df_res = pd.DataFrame(data_res)
+    df_gas = pd.DataFrame(data_gas)
 
     if df_inv.empty:
         st.warning("⚠️ No hay inversiones registradas.")
         return
 
-    propiedades = df_inv["Propiedad"].unique()
-    cols = st.columns(3)
+    # === TABLA DETALLADA EN MODO OSCURO ===
+    st.markdown("INVERSIONES")
 
-    for i, prop in enumerate(propiedades):
-        inv = df_inv[df_inv["Propiedad"] == prop].iloc[0]
-        gastos = df_gastos[df_gastos["Propiedad"] == prop].iloc[0] if not df_gastos.empty and prop in df_gastos["Propiedad"].values else {}
+    df_tabla = df_inv[["Propiedad", "Monto_inicial", "Fianza", "Muebles", "Fecha"]].copy()
+    df_tabla["Total"] = df_tabla[["Monto_inicial", "Fianza", "Muebles"]].sum(axis=1)
+    df_tabla["Fecha"] = pd.to_datetime(df_tabla["Fecha"]).dt.strftime("%d %b %Y")
+    df_tabla = df_tabla.rename(columns={
+        "Propiedad": "🏠 Propiedad",
+        "Monto_inicial": "💰 Monto Inicial",
+        "Fianza": "🔒 Fianza",
+        "Muebles": "🛋️ Muebles",
+        "Fecha": "📅 Fecha",
+        "Total": "📊 Total Inversión"
+    })
 
-        imagen_url = imagenes_propiedades.get(prop.upper(), f"https://api.dicebear.com/7.x/shapes/svg?seed={prop}")
-        fianza = inv.get("Fianza", 0.0)
-        renta_mensual = gastos.get("Alquiler", 0.0)
+    for col in ["💰 Monto Inicial", "🔒 Fianza", "🛋️ Muebles", "📊 Total Inversión"]:
+        df_tabla[col] = df_tabla[col].apply(lambda x: f"${x:,.0f}")
 
-        with cols[i % 3]:
-            with st.form(f"form_{inv['id']}", clear_on_submit=False):
-                st.markdown(f"""
-                    <div style="background-color:#0f172a; border-radius:16px; box-shadow:0 0 16px #00ffe130; overflow:hidden;">
-                        <div style="display:flex; flex-direction:column;">
-                            <img src="{imagen_url}" style="width:100%; height:160px; object-fit:cover;">
-                            <div style="padding:15px;">
-                                <h4 style="color:#ffffff; font-size:20px; margin:0 0 10px 0;">{prop}</h4>
-                                <div style="display:flex; justify-content:space-around; flex-wrap:wrap; gap:12px; font-size:14px; color:#ccc; margin-top:12px;">
-                                    <div style="text-align:center;">
-                                        <b>Fianza</b><br>$500
-                                    </div>
-                                    <div style="text-align:center;">
-                                        <b>Renta mensual</b><br>$2,800
-                                    </div>
-                                    <div style="text-align:center;">
-                                        <b>Electricidad</b><br>$100
-                                    </div>
-                                    <div style="text-align:center;">
-                                        <b>Internet</b><br>$50
-                                    </div>
-                                    <div style="text-align:center;">
-                                        <b>Otros</b><br>$80
-                                    </div>
-                                    <div style="text-align:center; color:#00ffe1;">
-                                        <b>Gasto total</b><br>$3,030
-                                    </div>
-                                </div>
-                                <div style="margin-top:15px; display:flex; justify-content:center; gap:10px;">
-                                    <button type="submit" name="action" value="editar" title="Editar" style="background:transparent; border:1px solid #00ffe1; color:#00ffe1; border-radius:8px; padding:6px 10px;">✏️</button>
-                                    <button type="submit" name="action" value="eliminar" title="Eliminar" style="background:transparent; border:1px solid #ff4d4f; color:#ff4d4f; border-radius:8px; padding:6px 10px;">🗑️</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                """, unsafe_allow_html=True)
 
-                submitted_action = st.form_submit_button()
-                if submitted_action:
-                    action = st.session_state.get(f"form_{inv['id']}_action")
-                else:
-                    action = st.session_state.get(f"form_{inv['id']}_action")
+    html_table = df_tabla.to_html(index=False, classes="dark-table", border=0)
+    html_render = f"""
+    <style>
+    .dark-table {{
+        width: 100%;
+        border-collapse: collapse;
+        background-color: #111827;
+        color: #ccc;
+        font-family: 'Segoe UI', sans-serif;
+        font-size: 14px;
+        margin: 0;
+    }}
+    .dark-table th {{
+        background-color: #1e1e21;
+        color: #00ffe1;
+        padding: 10px;
+        text-align: center;
+        border-bottom: 1px solid #333;
+        position: sticky;
+        top: 0;
+        z-index: 1;
+    }}
+    .dark-table td {{
+        padding: 8px;
+        text-align: center;
+        border-bottom: 1px solid #222;
+    }}
+    .table-wrapper {{
+        margin: 0;
+        padding: 15px 25px;
+        background-color:#0f1115;
+        border-radius: 14px;
+        box-shadow: 0 0 20px #00ffe120;
+        overflow-x: auto;
+    }}
+    </style>
+    <div class="table-wrapper">
+        {html_table}
+    </div>
+    """
 
-                if action == "editar":
-                    st.session_state.edit_id = inv["id"]
+
+    components.html(html_render, height=min(200 + 10 * len(df_tabla), 400), scrolling=True)
+
+
+
+
+    
+    # === TABLA DETALLADA DE GASTOS FIJOS EN MODO OSCURO ===
+    st.markdown("GASTOS FIJOS")
+
+    if not df_gas.empty:
+        df_gastos = df_gas[["Propiedad", "Alquiler", "Luz", "Agua", "Internet"]].copy()
+        df_gastos["Total Mensual"] = df_gastos[["Alquiler", "Luz", "Agua", "Internet"]].sum(axis=1)
+        df_gastos = df_gastos.rename(columns={
+            "Propiedad": "🏠 Propiedad",
+            "Alquiler": "💸 Alquiler",
+            "Luz": "💡 Electricidad",
+            "Agua": "🚿 Agua",
+            "Internet": "🌐 Internet",
+            "Total Mensual": "📊 Total mensual"
+        })
+
+        for col in ["💸 Alquiler", "💡 Electricidad", "🚿 Agua", "🌐 Internet", "📊 Total mensual"]:
+            df_gastos[col] = df_gastos[col].apply(lambda x: f"${x:,.0f}")
+
+        html_gastos = df_gastos.to_html(index=False, classes="dark-table", border=0)
+
+        html_render_gastos = f"""
+        <style>
+        .dark-table {{
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #111827;
+            color: #ccc;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 14px;
+            margin: 0;
+        }}
+        .dark-table th {{
+            background-color: #1e1e21;
+            color: #00ffe1;
+            padding: 10px;
+            text-align: center;
+            border-bottom: 1px solid #333;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }}
+        .dark-table td {{
+            padding: 8px;
+            text-align: center;
+            border-bottom: 1px solid #222;
+        }}
+        .table-wrapper {{
+            margin: 0;
+            padding: 15px 25px;
+            background-color:#0f1115;
+            border-radius: 14px;
+            box-shadow: 0 0 20px #00ffe120;
+            overflow-x: auto;
+        }}
+        </style>
+        <div class="table-wrapper">
+            {html_gastos}
+        </div>
+        """
+
+        components.html(html_render_gastos, height=min(200 + 10 * len(df_gastos), 400), scrolling=True)
+
+    else:
+        st.info("ℹ️ Aún no hay gastos fijos registrados.")
+
+
+
+    # === CONTROLES DE EDICIÓN Y ELIMINACIÓN ===
+    st.markdown("Editar")
+
+    for i, row in df_inv.iterrows():
+        with st.expander(f"🏠 {row['Propiedad']} — ${row['Monto_inicial'] + row['Fianza'] + row['Muebles']:,.0f}"):
+            col1, col2 = st.columns(2)
+            with col1:
+                with st.form(f"form_edit_{i}"):
+                    nueva_propiedad = st.text_input("🏷️ Propiedad", value=row["Propiedad"])
+                    nuevo_monto = st.number_input("💰 Monto Inicial", value=float(row["Monto_inicial"]))
+                    nueva_fianza = st.number_input("🔒 Fianza", value=float(row["Fianza"]))
+                    nuevos_muebles = st.number_input("🛋️ Muebles", value=float(row["Muebles"]))
+                    nueva_fecha = st.date_input("📅 Fecha", value=pd.to_datetime(row["Fecha"]))
+
+                    guardar = st.form_submit_button("💾 Guardar cambios")
+                    if guardar:
+                        db.collection("inversiones").document(row["doc_id"]).update({
+                            "Propiedad": nueva_propiedad.strip().title(),
+                            "Monto_inicial": nuevo_monto,
+                            "Fianza": nueva_fianza,
+                            "Muebles": nuevos_muebles,
+                            "Fecha": str(nueva_fecha)
+                        })
+                        st.success("✅ Cambios guardados.")
+                        st.rerun()
+
+            with col2:
+                confirmar = st.checkbox(f"❗ Confirmar eliminación {row['Propiedad']}", key=f"confirmar_{i}")
+                eliminar = st.button(f"🗑️ Eliminar inversión {row['Propiedad']}", key=f"eliminar_{i}")
+                if eliminar and confirmar:
+                    db.collection("inversiones").document(row["doc_id"]).delete()
+                    st.success("✅ Inversión eliminada.")
                     st.rerun()
-                elif action == "eliminar":
-                    eliminar_inversion(inv["id"], df_gastos)
+
+
+    #### ELIMINAR GASTOS FIJOS
+
+    st.markdown("Editar")
+
+    for i, row in df_gas.iterrows():
+        with st.expander(f"🏠 {row['Propiedad']} — ${row['Alquiler'] + row['Luz'] + row.get('Agua',0) + row['Internet']:,.0f} / mes"):
+            col1, col2 = st.columns(2)
+            with col1:
+                with st.form(f"form_gasto_{i}"):
+                    nueva_prop = st.text_input("🏷️ Propiedad", value=row["Propiedad"])
+                    nuevo_alquiler = st.number_input("💸 Alquiler", value=float(row["Alquiler"]))
+                    nueva_luz = st.number_input("💡 Electricidad", value=float(row["Luz"]))
+                    nueva_agua = st.number_input("🚿 Agua", value=float(row.get("Agua", 0)))
+                    nuevo_internet = st.number_input("🌐 Internet", value=float(row["Internet"]))
+
+                    guardar = st.form_submit_button("💾 Guardar cambios")
+                    if guardar:
+                        db.collection("gastos_fijos").document(row["doc_id"]).update({
+                            "Propiedad": nueva_prop.strip().title(),
+                            "Alquiler": nuevo_alquiler,
+                            "Luz": nueva_luz,
+                            "Agua": nueva_agua,
+                            "Internet": nuevo_internet
+                        })
+                        st.success("✅ Cambios guardados.")
+                        st.rerun()
+            with col2:
+                confirmar = st.checkbox(f"❗ Confirmar eliminación gasto {row['Propiedad']}", key=f"confirmar_gasto_{i}")
+                eliminar = st.button(f"🗑️ Eliminar gasto {row['Propiedad']}", key=f"eliminar_gasto_{i}")
+                if eliminar and confirmar:
+                    db.collection("gastos_fijos").document(row["doc_id"]).delete()
+                    st.success("✅ Gasto fijo eliminado.")
                     st.rerun()
 
-def eliminar_inversion(inv_id, df_gastos):
-    try:
-        db.collection("inversiones").document(inv_id).delete()
 
-        fila_gasto = df_gastos[df_gastos["id"] == inv_id]
-        if not fila_gasto.empty:
-            propiedad = fila_gasto["Propiedad"].values[0]
-            gastos_prop = df_gastos[df_gastos["Propiedad"] == propiedad]
-            for _, row in gastos_prop.iterrows():
-                db.collection("gastos_fijos").document(row['id']).delete()
+    
 
-        st.success("✅ Inversión eliminada correctamente.")
-    except Exception as e:
-        st.error(f"❌ Error al eliminar: {e}")
+
+
+    

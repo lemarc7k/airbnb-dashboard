@@ -335,7 +335,7 @@ with tabs[1]:  # LISTINGS
 with tabs[2]:  # RESERVAS
     mostrar_reservas(df)
 
-with tabs[3]:  # INVERSION
+with tabs[3]:
     mostrar_inversion()
 
 with tabs[4]:   # CALENDARIO
