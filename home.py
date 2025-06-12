@@ -1,37 +1,21 @@
-# === IMPORTACIONES PRINCIPALES ===
+# === CONFIGURACIÓN INICIAL ===
 import streamlit as st
-# Config inicial
 st.set_page_config(page_title="Real Estate | MV Ventures", layout="wide")
+
+# === BIBLIOTECAS BASE ===
+import os
+import time
+import hashlib
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from datetime import datetime as dt
 
-#from auth import login  # ⬅️ después del set_page_config
-#login()  # ⬅️ ejecuta el login justo después de importarlo
+# === FIREBASE ===
+from firebase_config import db
 
-# PESTAÑAS 
-from pages.Listings import mostrar_listings  # ✅ CORRECTO
-from pages.Reservas import mostrar_reservas
-from pages.Inversion import mostrar_inversion
-from pages.Calendario import mostrar_calendario
-
-
-
-st.cache_data.clear()
-
-
-
-
-
-
-# Resto de imports y código
-import hashlib
-import os
-import pandas as pd
-import altair as alt
+# === COMPONENTES STREAMLIT ===
 import streamlit.components.v1 as components
-
+from streamlit_js_eval import streamlit_js_eval
 
 # === LIBRERÍAS DE VISUALIZACIÓN ===
 import matplotlib.pyplot as plt
@@ -40,57 +24,42 @@ import altair as alt
 import plotly.express as px
 import plotly.graph_objects as go
 
-# === COMPONENTES STREAMLIT ===
-import streamlit.components.v1 as components
-from streamlit_js_eval import streamlit_js_eval
+# === CARGA DE PÁGINAS ===
+from pages.Listings import mostrar_listings
+from pages.Reservas import mostrar_reservas
+from pages.Inversion import mostrar_inversion
+from pages.Calendario import mostrar_calendario
 
-# === FIREBASE ===
-from firebase_config import db
+# === CARGA CENTRALIZADA CON CACHÉ ===
+@st.cache_data(ttl=300)  # Cache por 5 minutos
+def cargar_datos_firebase():
+    def fetch(col):
+        docs = db.collection(col).stream()
+        return [doc.to_dict() | {"doc_id": doc.id} for doc in docs]
 
-# === LIBRERÍAS ADICIONALES ===
-import time
+    return {
+        "bookings": fetch("bookings"),
+        "inversiones": fetch("inversiones"),
+        "gastos": fetch("gastos_fijos"),
+        "reservas": fetch("reservas")
+    }
 
+datos = cargar_datos_firebase()
 
+# === CONVERSIÓN A DATAFRAMES ===
+df_bookings = pd.DataFrame(datos["bookings"])
+df_inversiones = pd.DataFrame(datos["inversiones"])
+df_gastos = pd.DataFrame(datos["gastos"])
+df_reservas = pd.DataFrame(datos["reservas"])
 
-
-# Tabs funcionales de Streamlit (invisibles)
-tabs = st.tabs(["INICIO", "LISTINGS", "RESERVAS", "INVERSION", "CALENDARIO", "SIMULACION"])
-
-
-from datetime import datetime
-from firebase_config import db
-
-from datetime import datetime
-import pandas as pd
-import streamlit as st
-from firebase_config import db
-
-# === CARGAR BOOKINGS DE FIRESTORE CON ID ===
-#@st.cache_data(ttl=60)
-def cargar_bookings():
-    bookings_ref = db.collection("bookings").stream()
-    data = []
-    doc_ids = {}
-
-    for doc in bookings_ref:
-        reserva = doc.to_dict()
-        reserva["doc_id"] = doc.id  # ✅ Incluimos el ID en el dict
-        data.append(reserva)
-
-    df = pd.DataFrame(data)
-    return df
-
-
-# === USO ===
-df = cargar_bookings()
-
-# Inicialización segura del estado
+# === INICIALIZAR ESTADO ===
 if "edit_id" not in st.session_state:
     st.session_state["edit_id"] = None
 
-
-# === LIMPIEZA Y FORMATO DE DATOS ===
-def limpiar_dataframe(df):
+# === LIMPIEZA Y FORMATO DE BOOKINGS ===
+def limpiar_bookings(df):
+    if df.empty:
+        return df
     df["Check-in"] = pd.to_datetime(df["Check-in"], errors="coerce")
     df["Check-out"] = pd.to_datetime(df["Check-out"], errors="coerce")
     df["Propiedad"] = df["Propiedad"].fillna("Sin asignar").astype(str).str.strip().str.title()
@@ -99,29 +68,33 @@ def limpiar_dataframe(df):
     df["id_unico"] = df["Check-in"].astype(str) + df["Huesped"]
     return df
 
-df = limpiar_dataframe(df)
+df_bookings = limpiar_bookings(df_bookings)
+
+# === FECHA DE HOY ===
 hoy = pd.to_datetime(datetime.today().date())
 
-# === FILTRADOS PRINCIPALES ===
-upcoming = df[
-    (df["Check-in"].notna()) &
-    (df["Check-out"].notna()) &
-    (df["Check-in"].dt.date > hoy.date()) &
-    (df["Check-out"].dt.date > hoy.date())
+# === FILTROS DE BOOKING (opcional si los usas) ===
+upcoming = df_bookings[
+    (df_bookings["Check-in"].notna()) &
+    (df_bookings["Check-out"].notna()) &
+    (df_bookings["Check-in"].dt.date > hoy.date()) &
+    (df_bookings["Check-out"].dt.date > hoy.date())
 ].sort_values("Check-in")
 
-reservas_hoy = df[(df["Check-in"].dt.date <= hoy.date()) & (df["Check-out"].dt.date >= hoy.date())]
-checkouts_hoy = df[df["Check-out"].dt.date == hoy.date()]
+reservas_hoy = df_bookings[
+    (df_bookings["Check-in"].dt.date <= hoy.date()) &
+    (df_bookings["Check-out"].dt.date >= hoy.date())
+]
 
+checkouts_hoy = df_bookings[
+    df_bookings["Check-out"].dt.date == hoy.date()
+]
 
+# === TABS ===
+tabs = st.tabs(["INICIO", "LISTINGS", "RESERVAS", "INVERSION", "CALENDARIO", "SIMULACION"])
 
-
-
-
-with tabs[0]:  # LISTINGS
-    
-
-    # === ENCABEZADO ===
+# === CARGA DE CADA SECCIÓN ===
+with tabs[0]:  # INICIO
     st.markdown("<h2 style='text-align:center; color:#00ffe1;'>BIENVENIDO MR VERA</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align:center; color:#888;'>Estas son las reservas activas de tus propiedades gestionadas en Airbnb</p>", unsafe_allow_html=True)
 
@@ -274,9 +247,11 @@ with tabs[0]:  # LISTINGS
 
 
     # === LIMPIEZA Y NORMALIZACIÓN DE CAMPOS ===
-    df["Propiedad"] = df["Propiedad"].fillna("Sin asignar").astype(str).str.strip().str.title()
-    df["Habitación"] = df["Habitación"].fillna("Sin asignar").astype(str).str.strip().str.title()
-    df["Huesped"] = df["Huesped"].fillna("Sin nombre").astype(str).str.strip().str.title()
+    # === LIMPIEZA Y NORMALIZACIÓN DE CAMPOS ===
+    df_bookings["Propiedad"] = df_bookings["Propiedad"].fillna("Sin asignar").astype(str).str.strip().str.title()
+    df_bookings["Habitación"] = df_bookings["Habitación"].fillna("Sin asignar").astype(str).str.strip().str.title()
+    df_bookings["Huesped"] = df_bookings["Huesped"].fillna("Sin nombre").astype(str).str.strip().str.title()
+
 
     # === SECCIONES DE RESERVAS ===
     mostrar_titulo("Hoy")
@@ -327,16 +302,14 @@ with tabs[0]:  # LISTINGS
                 key=f"upcoming-{row['Huesped']}-{row['Check-in']}",
                 reserva_dict=row.to_dict()
             )
-
-
 with tabs[1]:  # LISTINGS
-    mostrar_listings(df)
+    mostrar_listings(df_bookings)
 
 with tabs[2]:  # RESERVAS
-    mostrar_reservas(df)
+    mostrar_reservas(df_reservas)
 
-with tabs[3]:
-    mostrar_inversion()
+with tabs[3]:  # INVERSION
+    mostrar_inversion(df_inversiones, df_gastos, df_reservas)
 
-with tabs[4]:   # CALENDARIO
-    mostrar_calendario(df)
+with tabs[4]:  # CALENDARIO
+    mostrar_calendario(df_bookings)

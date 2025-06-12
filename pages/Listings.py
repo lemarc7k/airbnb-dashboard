@@ -1,7 +1,7 @@
+# === IMPORTACIONES ===
 import streamlit as st
 import pandas as pd
 
-st.cache_data.clear()
 
 def mostrar_titulo(seccion, color="#00ffe1", size="26px", margin_top="30px", margin_bottom="15px"):
     st.markdown(f"""

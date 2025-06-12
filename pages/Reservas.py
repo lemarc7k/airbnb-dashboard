@@ -2,15 +2,23 @@
 # === TAB RESERVAS ===================================================================================
 # ====================================================================================================
 
+# === IMPORTACIONES ===
 import streamlit as st
-from firebase_config import db
-from datetime import datetime, timedelta
 import pandas as pd
+from datetime import datetime, timedelta
 
-st.cache_data.clear()
+# === FIREBASE ===
+from firebase_config import db
+
 
 
 def mostrar_reservas(df):
+    st.markdown("### ➕ Registrar nueva reserva")
+
+    if df.empty:
+        st.warning("⚠️ No hay reservas disponibles en este momento.")
+        return
+
     st.markdown("""
         <style>
         .formulario-box {

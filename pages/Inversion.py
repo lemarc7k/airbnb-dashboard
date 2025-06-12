@@ -1,43 +1,24 @@
 import streamlit as st
 import pandas as pd
-from firebase_config import db
 from datetime import datetime
 import streamlit.components.v1 as components
 import plotly.express as px
+from firebase_config import db
 
-# ========================
-# CARGA EFICIENTE CON CACHÉ
-# ========================
-@st.cache_data(ttl=60)
-def cargar_inversiones():
-    inversiones = []
-    for x in db.collection("inversiones").stream():
-        d = x.to_dict()
-        d["doc_id"] = x.id
-        inversiones.append(d)
-    return inversiones
 
-@st.cache_data(ttl=60)
-def cargar_gastos():
-    gastos = []
-    for x in db.collection("gastos_fijos").stream():
-        d = x.to_dict()
-        d["doc_id"] = x.id
-        gastos.append(d)
-    return gastos
+def mostrar_inversion(df_inv, df_gas, df_res):
+    if df_inv is None or df_gas is None or df_res is None:
+        st.warning("⚠️ No se pudieron cargar los datos.")
+        return
 
-@st.cache_data(ttl=60)
-def cargar_reservas():
-    reservas = []
-    for x in db.collection("reservas").stream():
-        reservas.append(x.to_dict())
-    return reservas
+
+
+
 
 
 # ========================
 # PANEL DE INVERSIÓN
 # ========================
-def mostrar_inversion():
     st.markdown("""
         <style>
         .metric-card {
@@ -110,19 +91,17 @@ def mostrar_inversion():
                 st.success("✅ Inversión y gastos registrados correctamente.")
                 st.rerun()
 
-    # === CARGA DE DATOS OPTIMIZADA ===
-    data_inv = cargar_inversiones()
-    data_res = cargar_reservas()
-    data_gas = cargar_gastos()
-
-    df_inv = pd.DataFrame(data_inv)
-    df_res = pd.DataFrame(data_res)
-    df_gas = pd.DataFrame(data_gas)
+    
 
     if df_inv.empty:
         st.warning("⚠️ No hay inversiones registradas.")
         return
 
+    
+    # === ENCABEZADO ===
+    st.markdown("<h3 style='text-align:center; color:#00ffe1;'>BIENVENIDO MR VERA</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color:#888;'>Estas son las inversiones activas gestionadas en Airbnb</p>", unsafe_allow_html=True)
+    
     # === TABLA DETALLADA EN MODO OSCURO ===
     st.markdown("INVERSIONES")
 
